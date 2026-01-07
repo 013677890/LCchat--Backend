@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"context"
 
 	"ChatServer/config"
 
@@ -104,4 +105,65 @@ func buildSyncer(paths []string, fallback zapcore.WriteSyncer) zapcore.WriteSync
 		return fallback
 	}
 	return zapcore.NewMultiWriteSyncer(syncers...)
+}
+
+
+func Info(ctx context.Context, msg string, fields ...zap.Field) {
+	if ctx == nil {
+		global.Info(msg, fields...)
+	} else {
+		traceId := ctx.Value("trace_id") //这里获取trace_id, 从gin的上下文中获取
+		if traceId != nil {
+			fields = append(fields, zap.String("trace_id", traceId.(string)))
+		}
+		global.Info(msg, fields...)
+	}
+}
+
+func Warn(ctx context.Context, msg string, fields ...zap.Field) {
+	if ctx == nil {
+		global.Warn(msg, fields...)
+	} else {
+		traceId := ctx.Value("trace_id")
+		if traceId != nil {
+			fields = append(fields, zap.String("trace_id", traceId.(string)))
+		}
+		global.Warn(msg, fields...)
+	}
+}
+
+func Error(ctx context.Context, msg string, fields ...zap.Field) {
+	if ctx == nil {
+		global.Error(msg, fields...)
+	} else {
+		traceId := ctx.Value("trace_id")
+		if traceId != nil {
+			fields = append(fields, zap.String("trace_id", traceId.(string)))
+		}
+		global.Error(msg, fields...)
+	}
+}
+
+func Fatal(ctx context.Context, msg string, fields ...zap.Field) {
+	if ctx == nil {
+		global.Fatal(msg, fields...)
+	} else {
+		traceId := ctx.Value("trace_id")
+		if traceId != nil {
+			fields = append(fields, zap.String("trace_id", traceId.(string)))
+		}
+		global.Fatal(msg, fields...)
+	}
+}
+
+func Debug(ctx context.Context, msg string, fields ...zap.Field) {
+	if ctx == nil {
+		global.Debug(msg, fields...)
+	} else {
+		traceId := ctx.Value("trace_id")
+		if traceId != nil {
+			fields = append(fields, zap.String("trace_id", traceId.(string)))
+		}
+		global.Debug(msg, fields...)
+	}
 }
