@@ -15,7 +15,7 @@ import (
 // - ConvId 关联会话，Seq 为会话内递增序号（便于排序与去重）。
 type Message struct {
 	Id          int64          `gorm:"column:id;primaryKey;autoIncrement;comment:自增id"`
-	ConvId      string         `gorm:"column:conv_id;type:char(40);not null;index:idx_conv_seq;index:idx_conv_time;comment:会话ID，关联 conversation.conv_id"`
+	ConvId      string         `gorm:"column:conv_id;type:char(40);not null;index:idx_conv_seq;index:idx_conv_time;comment:会话ID,关联 conversation.conv_id"`
 	Seq         int64          `gorm:"column:seq;not null;index:idx_conv_seq;comment:会话内序号"`
 	MsgId       string         `gorm:"column:msg_id;type:char(64);uniqueIndex;not null;comment:全局消息ID(雪花/UUID)"`
 	ClientMsgId string         `gorm:"column:client_msg_id;type:char(64);not null;uniqueIndex:uidx_sender_client;comment:客户端幂等ID"`
