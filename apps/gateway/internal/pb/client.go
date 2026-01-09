@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"ChatServer/pkg/logger"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -20,7 +22,6 @@ var (
 // InitUserServiceClient 初始化用户服务gRPC客户端
 // addr: 用户服务地址，格式为 "host:port"，例如 "localhost:9090"
 func InitUserServiceClient(addr string) error {
-
 
 	// 建立gRPC连接
 	// 使用 insecure credentials（实际生产环境应该使用TLS）
@@ -38,14 +39,11 @@ func InitUserServiceClient(addr string) error {
 	userServiceConn = conn
 	userServiceClient = userpb.NewUserServiceClient(conn)
 
-
 	return nil
 }
 
 // CloseUserServiceClient 关闭用户服务gRPC客户端
 func CloseUserServiceClient() error {
-
-
 	if userServiceConn != nil {
 		if err := userServiceConn.Close(); err != nil {
 			return err
@@ -60,7 +58,7 @@ func GetUserServiceClient() userpb.UserServiceClient {
 	return userServiceClient
 }
 
-// Login 登录方法（不带重试）
+// Login 登录方法
 // ctx: 上下文
 // req: 登录请求
 // 返回: 登录响应和错误
@@ -72,14 +70,14 @@ func Login(ctx context.Context, req *userpb.LoginRequest) (*userpb.LoginResponse
 
 	resp, err := client.Login(ctx, req)
 	if err != nil {
-
 		return nil, err
 	}
 
 	return resp, nil
 }
 
-// LoginWithRetry 带重试机制的登录方法
+
+// loginWithRetry 带重试机制的登录方法
 // ctx: 上下文
 // req: 登录请求
 // maxRetries: 最大重试次数
@@ -96,9 +94,12 @@ func LoginWithRetry(ctx context.Context, req *userpb.LoginRequest, maxRetries in
 				backoff = time.Second // 最大延迟1秒
 			}
 
-
 			select {
 			case <-time.After(backoff):
+				logger.Warn(ctx, "登录重试",
+					logger.Int("attempt", attempt),
+					logger.Duration("backoff", backoff),
+				)
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
@@ -121,6 +122,5 @@ func LoginWithRetry(ctx context.Context, req *userpb.LoginRequest, maxRetries in
 	}
 
 	// 所有重试都失败
-
 	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
 }
