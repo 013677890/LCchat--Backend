@@ -31,13 +31,7 @@ func Login(c *gin.Context) {
 	// 1. 绑定请求数据
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// 如果 JSON 绑定失败，说明客户端发送的数据格式有误或缺少必要字段
-		// 记录警告日志，包含 trace_id 和 客户端 IP 以便排查
-		logger.Warn(ctx, "登录请求参数绑定失败",
-			logger.String("trace_id", traceId),
-			logger.String("ip", ip),
-			logger.ErrorField("error", err),
-		)
+		// 参数错误由客户端输入导致,属于正常业务流程,不记录日志
 		c.JSON(400, gin.H{
 			"code":    consts.CodeParamError,
 			"message": consts.GetMessage(consts.CodeParamError),
@@ -46,24 +40,9 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 2. 记录登录请求(脱敏处理)
-	logger.Info(ctx, "收到登录请求",
-		logger.String("trace_id", traceId),
-		logger.String("ip", ip),
-		logger.String("telephone", utils.MaskTelephone(req.Telephone)),
-		logger.String("password", utils.MaskPassword(req.Password)),
-		logger.String("platform", req.DeviceInfo.Platform),
-		logger.String("user_agent", c.Request.UserAgent()),
-	)
-
-	// 3. 业务参数合法性校验
+	// 2. 业务参数合法性校验
 	if len(req.Telephone) != 11 {
-		// 校验手机号是否为 11 位，若不符合则直接拦截，减少后端服务压力
-		logger.Warn(ctx, "登录验证失败：手机号无效",
-			logger.String("trace_id", traceId),
-			logger.String("ip", ip),
-			logger.String("telephone", utils.MaskTelephone(req.Telephone)),
-		)
+		// 用户输入错误,属于正常业务流程,不记录日志
 		c.JSON(400, gin.H{
 			"code":    consts.CodePhoneError,
 			"message": consts.GetMessage(consts.CodePhoneError),
@@ -72,11 +51,7 @@ func Login(c *gin.Context) {
 	}
 
 	if len(req.Password) == 0 {
-		// 密码不能为空，这是最基本的输入校验
-		logger.Warn(ctx, "登录验证失败：密码为空",
-			logger.String("trace_id", traceId),
-			logger.String("ip", ip),
-		)
+		// 用户输入错误,属于正常业务流程,不记录日志
 		c.JSON(400, gin.H{
 			"code":    consts.CodeParamError,
 			"message": consts.GetMessage(consts.CodeParamError),
@@ -84,7 +59,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 4. 调用用户服务进行身份认证(gRPC)
+	// 3. 调用用户服务进行身份认证(gRPC)
 	startTime := time.Now()
 
 	grpcReq := &userpb.LoginRequest{
@@ -92,18 +67,12 @@ func Login(c *gin.Context) {
 		Password:  req.Password,
 	}
 
-	logger.Debug(ctx, "发送 gRPC 请求到用户服务",
-		logger.String("trace_id", traceId),
-		logger.String("telephone", utils.MaskTelephone(req.Telephone)),
-	)
-
 	// 调用 gRPC 接口，并使用重试机制提高服务稳定性
 	grpcResp, err := pb.LoginWithRetry(ctx, grpcReq, 3)
 	duration := time.Since(startTime)
 
 	if err != nil {
-		// 如果 gRPC 调用返回错误，可能是网络抖动或 User 服务异常
-		// 记录错误日志，并向客户端返回 500 错误，保护内部服务细节
+		// 所有重试失败,记录错误日志
 		logger.Error(ctx, "调用用户服务 gRPC 失败",
 			logger.String("trace_id", traceId),
 			logger.String("ip", ip),
@@ -118,25 +87,9 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	logger.Info(ctx, "收到用户服务 gRPC 响应",
-		logger.String("trace_id", traceId),
-		logger.Int("code", int(grpcResp.Code)),
-		logger.String("message", grpcResp.Message),
-		logger.Duration("duration", duration),
-	)
-
-	// 5. 处理用户服务返回的业务响应
+	// 4. 处理用户服务返回的业务响应
 	if grpcResp.Code != 0 {
-		// User 服务返回非 0 状态码，表示业务逻辑上的失败（如密码错误、账号锁定等）
-		// 将业务错误透传给前端
-		logger.Warn(ctx, "用户认证失败",
-			logger.String("trace_id", traceId),
-			logger.String("ip", ip),
-			logger.String("telephone", utils.MaskTelephone(req.Telephone)),
-			logger.Int("error_code", int(grpcResp.Code)),
-			logger.String("error_message", grpcResp.Message),
-		)
-
+		// 用户认证失败(如密码错误、账号锁定等),属于正常业务流程,不记录日志
 		c.JSON(400, gin.H{
 			"code":    grpcResp.Code,
 			"message": grpcResp.Message,
@@ -156,15 +109,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	logger.Info(ctx, "用户认证成功",
-		logger.String("trace_id", traceId),
-		logger.String("user_uuid", utils.MaskUUID(grpcResp.UserInfo.Uuid)),
-		logger.String("telephone", utils.MaskTelephone(grpcResp.UserInfo.Telephone)),
-		logger.String("nickname", grpcResp.UserInfo.Nickname),
-		logger.Duration("auth_duration", duration),
-	)
-
-	// 6. 令牌生成逻辑
+	// 5. 令牌生成逻辑
 	// 优先从 Header 获取设备唯一标识，若无则生成一个新的 UUID 标识当前设备
 	deviceId := c.GetHeader("X-Device-ID")
 	if deviceId == "" {
@@ -175,7 +120,6 @@ func Login(c *gin.Context) {
 		)
 	}
 
-	tokenStartTime := time.Now()
 	// 生成 Access Token，用于后续接口请求的身份校验
 	accessToken, err := utils.GenerateToken(grpcResp.UserInfo.Uuid, deviceId)
 	if err != nil {
@@ -208,15 +152,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	tokenDuration := time.Since(tokenStartTime)
-	logger.Info(ctx, "Token 生成成功",
-		logger.String("trace_id", traceId),
-		logger.String("user_uuid", utils.MaskUUID(grpcResp.UserInfo.Uuid)),
-		logger.String("device_id", deviceId),
-		logger.Duration("token_duration", tokenDuration),
-	)
-
-	// 7. 构造响应
+	// 6. 构造响应
 	response := dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

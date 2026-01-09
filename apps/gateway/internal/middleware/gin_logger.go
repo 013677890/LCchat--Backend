@@ -27,16 +27,21 @@ func GinLogger() gin.HandlerFunc {
 		c.Next()
 
 		cost := time.Since(start)
-		logger.Info(c.Request.Context(), "收到请求",
-			logger.Int("status", c.Writer.Status()),
-			logger.String("method", c.Request.Method),
-			logger.String("path", path),
-			logger.String("query", query),
-			logger.String("ip", c.ClientIP()),
-			logger.String("user-agent", c.Request.UserAgent()),
-			logger.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()),
-			logger.Duration("cost", cost),
-		)
+		status := c.Writer.Status()
+
+		// 只记录服务端错误(5xx)和慢请求(>2s),正常请求不记录
+		if status >= 500 || cost > 2*time.Second {
+			logger.Warn(c.Request.Context(), "慢请求或服务端错误",
+				logger.Int("status", status),
+				logger.String("method", c.Request.Method),
+				logger.String("path", path),
+				logger.String("query", query),
+				logger.String("ip", c.ClientIP()),
+				logger.String("user-agent", c.Request.UserAgent()),
+				logger.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()),
+				logger.Duration("cost", cost),
+			)
+		}
 	}
 }
 

@@ -88,23 +88,15 @@ func Login(ctx context.Context, req *userpb.LoginRequest) (*userpb.LoginResponse
 		return nil, fmt.Errorf("user service client not initialized")
 	}
 
-	logger.Debug(ctx, "调用用户服务登录",
-		logger.String("telephone", req.Telephone),
-	)
-
 	resp, err := client.Login(ctx, req)
 	if err != nil {
-		logger.Error(ctx, "调用用户服务登录失败",
+		// 单次调用失败会被重试,记录警告日志
+		logger.Warn(ctx, "调用用户服务登录失败",
 			logger.ErrorField("error", err),
 			logger.String("telephone", req.Telephone),
 		)
 		return nil, err
 	}
-
-	logger.Debug(ctx, "收到用户服务登录响应",
-		logger.Int("code", int(resp.Code)),
-		logger.String("message", resp.Message),
-	)
 
 	return resp, nil
 }
@@ -126,7 +118,7 @@ func LoginWithRetry(ctx context.Context, req *userpb.LoginRequest, maxRetries in
 				backoff = time.Second // 最大延迟1秒
 			}
 
-			logger.Warn(ctx, "延迟后重试登录请求",
+			logger.Debug(ctx, "延迟后重试登录请求",
 				logger.Int("attempt", attempt+1),
 				logger.Int("max_retries", maxRetries),
 				logger.Duration("backoff", backoff),

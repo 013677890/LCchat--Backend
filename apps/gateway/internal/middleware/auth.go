@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"ChatServer/apps/gateway/internal/utils"
-	"ChatServer/pkg/logger"
 	"net/http"
 	"strings"
 
@@ -13,15 +12,10 @@ import (
 // 从请求头中提取 Token 并验证，验证通过后将用户信息存入 Context
 func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-
 		// 1. 从 Header 中获取 Authorization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			logger.Warn(ctx, "缺少认证请求头",
-				logger.String("path", c.Request.URL.Path),
-				logger.String("method", c.Request.Method),
-			)
+			// 客户端请求错误,属于正常业务流程,不记录日志
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    401,
 				"message": "未提供认证信息",
@@ -33,9 +27,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		// 2. 验证格式: "Bearer <token>"
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			logger.Warn(ctx, "认证请求头格式无效",
-				logger.String("header", authHeader),
-			)
+			// 客户端请求格式错误,属于正常业务流程,不记录日志
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    401,
 				"message": "认证格式错误",
@@ -49,10 +41,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		// 3. 解析并验证 Token
 		claims, err := utils.ParseToken(tokenString)
 		if err != nil {
-			logger.Warn(ctx, "Token 验证失败",
-				logger.String("error", err.Error()),
-				logger.String("ip", c.ClientIP()),
-			)
+			// Token 无效或过期,属于正常业务流程,不记录日志
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    401,
 				"message": "Token 无效或已过期",
@@ -64,12 +53,6 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		// 4. 将用户信息存入 Context，供后续 Handler 使用
 		c.Set("user_uuid", claims.UserUUID)
 		c.Set("device_id", claims.DeviceID)
-
-		logger.Info(ctx, "用户认证通过",
-			logger.String("user_uuid", claims.UserUUID),
-			logger.String("device_id", claims.DeviceID),
-			logger.String("path", c.Request.URL.Path),
-		)
 
 		c.Next()
 	}
