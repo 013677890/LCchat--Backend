@@ -186,6 +186,11 @@ func Int64(key string, value int64) zap.Field {
 	return zap.Int64(key, value)
 }
 
+// Float64 创建 float64 类型字段
+func Float64(key string, value float64) zap.Field {
+	return zap.Float64(key, value)
+}
+
 // Bool 创建布尔类型字段
 func Bool(key string, value bool) zap.Field {
 	return zap.Bool(key, value)

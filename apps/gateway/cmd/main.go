@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ChatServer/apps/gateway/internal/middleware"
 	"ChatServer/apps/gateway/internal/pb"
 	"ChatServer/apps/gateway/internal/router"
 	"ChatServer/config"
@@ -37,7 +38,19 @@ func main() {
 
 	logger.Info(ctx, "Gateway 服务初始化中...")
 
-	// 2. 初始化用户服务gRPC客户端
+	// 2. 初始化用户级别限流器
+	// TODO: 从配置文件读取限流参数
+	// 参数说明：
+	//   - requestsPerSecond: 每个用户每秒允许的请求数（令牌产生速率）
+	//   - burst: 令牌桶容量（允许的突发请求数）
+	// 示例：10 req/s, burst 20 表示正常情况下每秒10个请求，短时间内最多20个
+	middleware.InitUserRateLimiter(10, 20)
+	logger.Info(ctx, "用户限流器初始化完成",
+		logger.Float64("requests_per_second", 10),
+		logger.Int("burst", 20),
+	)
+
+	// 3. 初始化用户服务gRPC客户端
 	// TODO: 从配置文件读取user服务地址
 	userServiceAddr := "localhost:9090"
 	if err := pb.InitUserServiceClient(userServiceAddr); err != nil {
@@ -50,12 +63,12 @@ func main() {
 		}
 	}()
 
-	// 3. 初始化路由
+	// 4. 初始化路由
 	// Gin 模式设置: ReleaseMode/DebugMode/TestMode
 	gin.SetMode(gin.ReleaseMode)
 	r := router.InitRouter()
 
-	// 3. 配置服务器
+	// 5. 配置服务器
 	port := 8080 // TODO: 从配置文件读取
 	addr := fmt.Sprintf(":%d", port)
 
@@ -67,7 +80,7 @@ func main() {
 		MaxHeaderBytes: 1 << 20,          // 最大请求头 1MB
 	}
 
-	// 4. 启动服务器（在 goroutine 中）
+	// 6. 启动服务器（在 goroutine 中）
 	go func() {
 		logger.Info(ctx, "Gateway 服务器启动中",
 			logger.String("address", addr),
@@ -82,7 +95,7 @@ func main() {
 
 	logger.Info(ctx, "Gateway 服务器启动成功，按 Ctrl+C 关闭")
 
-	// 5. 优雅停机
+	// 7. 优雅停机
 	quit := make(chan os.Signal, 1)
 	// 监听中断信号：Ctrl+C (SIGINT) 和 kill 命令 (SIGTERM)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
