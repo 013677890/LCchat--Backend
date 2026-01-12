@@ -13,18 +13,21 @@ import (
 func InitRouter() *gin.Engine {
 	r := gin.New()
 
-	// 基础中间件 (使用自定义的日志和恢复中间件)
-	r.Use(middleware.GinLogger())
+	// 恢复中间件
 	r.Use(middleware.GinRecovery(true))
 
-	// Prometheus 监控中间件（必须在其他中间件之前，以记录所有请求）
+	// 追踪中间件 (生成 trace_id)
+	r.Use(util.TraceLogger())
+
+	// 日志中间件
+	r.Use(middleware.GinLogger())
+
+	// Prometheus 监控中间件
 	r.Use(middleware.PrometheusMiddleware())
 
 	// 跨域中间件
 	r.Use(middleware.CorsMiddleware())
 
-	// 追踪中间件 (生成 trace_id)
-	r.Use(util.TraceLogger())
 
 	// 健康检查（无需认证）
 	r.GET("/health", func(c *gin.Context) {

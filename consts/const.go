@@ -62,6 +62,7 @@ const (
 const (
 	CodeInternalError      = 30001 // 服务器内部错误
 	CodeServiceUnavailable = 30002 // 服务暂不可用
+	CodeTimeoutError       = 30003 // 超时错误
 )
 
 // 错误消息映射
@@ -112,6 +113,7 @@ var CodeMessage = map[int32]string{
 	// 服务端错误
 	CodeInternalError:      "服务器内部错误",
 	CodeServiceUnavailable: "服务暂不可用",
+	CodeTimeoutError:       "超时错误",
 }
 
 // GetMessage 根据错误码获取错误消息

@@ -86,11 +86,6 @@ func grpcCodeToBusinessCode(code codes.Code) int32 {
 		// 默认映射到用户已存在，具体由 User 服务指定
 		return consts.CodeUserAlreadyExist
 
-	// ========== 超时错误 ==========
-	case codes.DeadlineExceeded:
-		// 超时（如验证码过期）
-		return consts.CodeVerifyCodeExpire
-
 	// ========== 服务端错误 ==========
 	case codes.Internal:
 		// 内部错误
@@ -103,6 +98,10 @@ func grpcCodeToBusinessCode(code codes.Code) int32 {
 	case codes.Unknown:
 		// 未知错误
 		return consts.CodeInternalError
+
+	case codes.DeadlineExceeded:
+		// 超时
+		return consts.CodeTimeoutError
 
 	// ========== 其他情况 ==========
 	default:
