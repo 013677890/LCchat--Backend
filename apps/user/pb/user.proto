@@ -24,7 +24,7 @@ service UserService {
     
     // Login 用户登录
     // 业务场景：用户通过手机号和密码登录系统
-    // 请求：手机号(11位)、密码(加密后)、设备信息
+    // 请求：手机号(11位)、密码、设备信息
     // 响应：用户信息(用于生成JWT)、错误码(如密码错误、账号禁用等)
     // 注意：Token生成由Gateway负责，User只负责验证并返回用户信息
     rpc Login (LoginRequest) returns (LoginResponse) {}
