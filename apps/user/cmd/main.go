@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"ChatServer/apps/user/internal/domain"
 	"ChatServer/apps/user/internal/handler"
 	"ChatServer/apps/user/internal/repository"
 	"ChatServer/apps/user/internal/server"
@@ -21,39 +22,62 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1) 初始化日志
+	// 1. 初始化日志
 	logCfg := config.DefaultLoggerConfig()
 	zl, err := logger.Build(logCfg)
 	if err != nil {
-		log.Fatalf("init logger failed: %v", err)
+		log.Fatalf("初始化日志失败: %v", err)
 	}
 	logger.ReplaceGlobal(zl)
-	defer zl.Sync() // 确保缓冲写出
+	defer zl.Sync()
 
-	// 2) 初始化 MySQL
+	// 2. 初始化MySQL
 	dbCfg := config.DefaultMySQLConfig()
 	db, err := mysql.Build(dbCfg)
 	if err != nil {
-		log.Fatalf("init mysql failed: %v", err)
+		log.Fatalf("初始化MySQL失败: %v", err)
 	}
 	mysql.ReplaceGlobal(db)
 
-	// 3) 组装依赖
+	// 3. 组装依赖 - Repository层
 	userRepo := repository.NewUserRepository(db)
-	userSvc := service.NewUserService(userRepo)
-	userHandler := handler.NewUserServiceHandler(userSvc)
+	relationRepo := repository.NewRelationRepository(db)
+	applyRepo := repository.NewApplyRequestRepository(db)
+	deviceRepo := repository.NewDeviceSessionRepository(db)
 
-	// 4) 启动 gRPC Server
+	// 4. 组装依赖 - Service层
+	authService := service.NewAuthService(userRepo, deviceRepo)
+	userQueryService := service.NewUserInfoService(userRepo)
+	friendService := service.NewFriendService(userRepo, relationRepo, applyRepo)
+	deviceService := service.NewDeviceService(deviceRepo)
+
+	// 5. 组装依赖 - Domain层
+	loginDomain := domain.NewLoginDomain(authService, deviceService)
+
+	// 6. 组装依赖 - Handler层
+	userHandler := handler.NewUserServiceHandler(
+		loginDomain,
+		authService,
+		userQueryService,
+		friendService,
+		deviceService,
+	)
+
+	// 7. 启动gRPC Server
 	opts := server.Options{
 		Address:          ":9090",
 		EnableHealth:     true,
-		EnableReflection: true, // 生产可关
+		EnableReflection: true, // 生产环境建议关闭
 	}
 
+	logger.Info(ctx, "准备启动用户服务", logger.String("address", opts.Address))
+
 	if err := server.Start(ctx, opts, func(s *grpc.Server, hs healthgrpc.HealthServer) {
+		// 注册用户服务
 		userpb.RegisterUserServiceServer(s, userHandler)
+
+		// 设置健康检查状态
 		if hs != nil {
-			// 设置健康状态（需要类型断言）
 			if setter, ok := hs.(interface {
 				SetServingStatus(service string, status healthgrpc.HealthCheckResponse_ServingStatus)
 			}); ok {
@@ -61,6 +85,6 @@ func main() {
 			}
 		}
 	}); err != nil {
-		log.Fatalf("start grpc server failed: %v", err)
+		log.Fatalf("启动gRPC服务失败: %v", err)
 	}
 }
