@@ -4,6 +4,8 @@ import (
 	"ChatServer/apps/gateway/internal/middleware"
 	"ChatServer/apps/gateway/internal/pb"
 	"ChatServer/apps/gateway/internal/router"
+	v1 "ChatServer/apps/gateway/internal/router/v1"
+	"ChatServer/apps/gateway/internal/service"
 	"ChatServer/config"
 	"ChatServer/pkg/logger"
 	"context"
@@ -50,25 +52,46 @@ func main() {
 		logger.Int("burst", 20),
 	)
 
-	// 3. 初始化用户服务gRPC客户端
+	// 3. 初始化 gRPC 客户端（依赖注入）
 	// TODO: 从配置文件读取user服务地址
 	userServiceAddr := "localhost:9090"
-	if err := pb.InitUserServiceClient(userServiceAddr); err != nil {
-		logger.Error(ctx, "初始化用户服务 gRPC 客户端失败", logger.ErrorField("error", err))
+
+	// 3.1 创建熔断器
+	userServiceBreaker := pb.CreateCircuitBreaker("user-service")
+	logger.Info(ctx, "熔断器创建成功", logger.String("name", "user-service"))
+
+	// 3.2 创建 gRPC 连接
+	userServiceConn, err := pb.CreateUserServiceConnection(userServiceAddr, userServiceBreaker)
+	if err != nil {
+		logger.Error(ctx, "创建用户服务 gRPC 连接失败", logger.ErrorField("error", err))
 		os.Exit(1)
 	}
 	defer func() {
-		if err := pb.CloseUserServiceClient(); err != nil {
-			logger.Error(ctx, "关闭用户服务 gRPC 客户端失败", logger.ErrorField("error", err))
+		if err := userServiceConn.Close(); err != nil {
+			logger.Error(ctx, "关闭用户服务 gRPC 连接失败", logger.ErrorField("error", err))
 		}
 	}()
+	logger.Info(ctx, "用户服务 gRPC 连接创建成功", logger.String("address", userServiceAddr))
 
-	// 4. 初始化路由
+	// 3.3 创建 gRPC 客户端
+	userClient := pb.NewUserServiceClient(userServiceConn, userServiceBreaker)
+	logger.Info(ctx, "用户服务 gRPC 客户端初始化完成")
+
+	// 4. 初始化 Service 层（依赖注入）
+	loginService := service.NewLoginService(userClient)
+	logger.Info(ctx, "登录服务初始化完成")
+
+	// 5. 初始化 Handler 层（依赖注入）
+	loginHandler := v1.NewLoginHandler(loginService)
+	logger.Info(ctx, "登录处理器初始化完成")
+
+	// 6. 初始化路由（依赖注入）
 	// Gin 模式设置: ReleaseMode/DebugMode/TestMode
 	gin.SetMode(gin.ReleaseMode)
-	r := router.InitRouter()
+	r := router.InitRouter(loginHandler)
+	logger.Info(ctx, "路由初始化完成")
 
-	// 5. 配置服务器
+	// 7. 配置服务器
 	port := 8080 // TODO: 从配置文件读取
 	addr := "127.0.0.1:" + fmt.Sprintf("%d", port)
 
@@ -80,7 +103,7 @@ func main() {
 		MaxHeaderBytes: 1 << 20,          // 最大请求头 1MB
 	}
 
-	// 6. 启动服务器（在 goroutine 中）
+	// 8. 启动服务器（在 goroutine 中）
 	go func() {
 		logger.Info(ctx, "Gateway 服务器启动中",
 			logger.String("address", addr),
@@ -95,7 +118,7 @@ func main() {
 
 	logger.Info(ctx, "Gateway 服务器启动成功，按 Ctrl+C 关闭")
 
-	// 7. 优雅停机
+	// 9. 优雅停机
 	quit := make(chan os.Signal, 1)
 	// 监听中断信号：Ctrl+C (SIGINT) 和 kill 命令 (SIGTERM)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -106,7 +129,7 @@ func main() {
 		logger.String("signal", sig.String()),
 	)
 
-	// 6. 设置超时时间，等待正在处理的请求完成
+	// 10. 设置超时时间，等待正在处理的请求完成
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

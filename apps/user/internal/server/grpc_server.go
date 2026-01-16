@@ -33,17 +33,19 @@ type Options struct {
 // Start 启动 gRPC Server，负责创建监听、注册服务、处理优雅停机。
 // register 由业务方传入，在此回调中完成各服务的 Register。
 func Start(ctx context.Context, opts Options, register func(s *grpc.Server, health healthgrpc.HealthServer)) error {
-	if opts.Address == "" {
+	if opts.Address == "" {//如果地址为空，返回错误
 		return status.Error(codes.InvalidArgument, "grpc address is empty")
 	}
 
-	grpcOpts := buildServerOptions(opts)
+	grpcOpts := buildServerOptions(opts)//构建grpc.ServerOption
 	s := grpc.NewServer(grpcOpts...)
 
 	// 健康检查
 	var healthServer healthgrpc.HealthServer
 	if opts.EnableHealth {
+		//创建健康检查服务
 		healthServer = NewHealthServer()
+		//注册健康检查服务
 		healthgrpc.RegisterHealthServer(s, healthServer)
 	}
 
@@ -55,6 +57,7 @@ func Start(ctx context.Context, opts Options, register func(s *grpc.Server, heal
 		reflection.Register(s)
 	}
 
+	//监听端口
 	lis, err := net.Listen("tcp", opts.Address)
 	if err != nil {
 		return err
@@ -64,7 +67,7 @@ func Start(ctx context.Context, opts Options, register func(s *grpc.Server, heal
 	go gracefulStop(ctx, s)
 
 	logger.Info(ctx, "gRPC server start", logger.String("addr", opts.Address))
-	if err := s.Serve(lis); err != nil {
+	if err := s.Serve(lis); err != nil {//开始接收请求
 		return err
 	}
 	return nil
@@ -87,10 +90,10 @@ func buildServerOptions(opts Options) []grpc.ServerOption {
 		recoveryUnaryInterceptor(),
 		loggingUnaryInterceptor(),
 	}
-	unaryInters = append(unaryInters, opts.UnaryInterceptors...)
-	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInters...))
+	unaryInters = append(unaryInters, opts.UnaryInterceptors...)//添加自定义拦截器
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInters...))//构建拦截器链
 
-	if len(opts.StreamInterceptors) > 0 {
+	if len(opts.StreamInterceptors) > 0 {//添加自定义流拦截器
 		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(opts.StreamInterceptors...))
 	}
 

@@ -1,0 +1,20 @@
+package service
+
+import (
+	"ChatServer/apps/gateway/internal/dto"
+	"context"
+)
+
+// LoginService 登录服务接口
+// 职责：
+//   - 调用下游用户服务进行认证
+//   - 生成访问令牌（Access Token 和 Refresh Token）
+//   - 组装完整的登录响应
+type LoginService interface {
+	// Login 用户登录
+	// ctx: 请求上下文
+	// req: 登录请求
+	// deviceId: 设备唯一标识
+	// 返回: 完整的登录响应（包含Token和用户信息）
+	Login(ctx context.Context, req *dto.LoginRequest, deviceId string) (*dto.LoginResponse, error)
+}

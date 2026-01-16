@@ -1,10 +1,14 @@
 package dto
 
+import (
+	userpb "ChatServer/apps/user/pb"
+)
+
 // LoginRequest 登录请求 DTO
 type LoginRequest struct {
-	Telephone  string     `json:"telephone" binding:"required,len=11"` // 手机号
-	Password   string     `json:"password" binding:"required,min=8,max=16"`  // 密码
-	DeviceInfo DeviceInfo `json:"deviceInfo"`                   // 设备信息
+	Telephone  string     `json:"telephone" binding:"required,len=11"`      // 手机号
+	Password   string     `json:"password" binding:"required,min=8,max=16"` // 密码
+	DeviceInfo DeviceInfo `json:"deviceInfo"`                               // 设备信息
 }
 
 // DeviceInfo 设备信息 DTO
@@ -36,16 +40,40 @@ type LoginResponse struct {
 	UserInfo     UserInfo `json:"userInfo"`     // 用户信息
 }
 
-// LoginRouterToService 登录路由到服务请求 DTO
-type LoginRouterToService struct {
-	Telephone  string     `json:"telephone" binding:"required"` // 手机号
-	Password   string     `json:"password" binding:"required"`  // 密码
-	DeviceInfo DeviceInfo `json:"deviceInfo"`                   // 设备信息
+// ==================== DTO 转换函数 ====================
+
+// ConvertToProtoLoginRequest 将 DTO 登录请求转换为 Protobuf 请求
+func ConvertToProtoLoginRequest(dto *LoginRequest) *userpb.LoginRequest {
+	if dto == nil {
+		return nil
+	}
+
+	return &userpb.LoginRequest{
+		Telephone: dto.Telephone,
+		Password:  dto.Password,
+		DeviceInfo: &userpb.DeviceInfo{
+			Platform:    dto.DeviceInfo.Platform,
+			OsVersion:   dto.DeviceInfo.OSVersion,
+			AppVersion:  dto.DeviceInfo.AppVersion,
+			DeviceModel: dto.DeviceInfo.DeviceModel,
+		},
+	}
 }
 
-// ServiceLoginResponse 服务层登录响应 DTO
-type ServiceLoginResponse struct {
-	Code    int            `json:"code"`    // 业务状态码
-	Message string         `json:"message"` // 响应消息
-	Data    *LoginResponse `json:"data"`    // 登录数据
+// ConvertUserInfoFromProto 将 Protobuf 用户信息转换为 DTO
+func ConvertUserInfoFromProto(pb *userpb.UserInfo) UserInfo {
+	if pb == nil {
+		return UserInfo{}
+	}
+
+	return UserInfo{
+		UUID:      pb.Uuid,
+		Nickname:  pb.Nickname,
+		Telephone: pb.Telephone,
+		Email:     pb.Email,
+		Avatar:    pb.Avatar,
+		Gender:    int8(pb.Gender),
+		Signature: pb.Signature,
+		Birthday:  pb.Birthday,
+	}
 }

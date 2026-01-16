@@ -10,7 +10,8 @@ import (
 )
 
 // InitRouter 初始化路由
-func InitRouter() *gin.Engine {
+// loginHandler: 登录处理器（依赖注入）
+func InitRouter(loginHandler *v1.LoginHandler) *gin.Engine {
 	r := gin.New()
 
 	// 恢复中间件
@@ -27,7 +28,6 @@ func InitRouter() *gin.Engine {
 
 	// 跨域中间件
 	r.Use(middleware.CorsMiddleware())
-
 
 	// 健康检查（无需认证）
 	r.GET("/health", func(c *gin.Context) {
@@ -46,8 +46,8 @@ func InitRouter() *gin.Engine {
 		// 公开接口（不需要认证）
 		public := api.Group("/public")
 		{
-			// 登录接口
-			public.POST("/login", v1.Login)
+			// 登录接口（使用依赖注入的 Handler）
+			public.POST("/login", loginHandler.Login)
 		}
 
 		// 需要认证的接口

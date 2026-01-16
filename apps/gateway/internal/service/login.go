@@ -4,28 +4,38 @@ import (
 	"ChatServer/apps/gateway/internal/dto"
 	"ChatServer/apps/gateway/internal/pb"
 	"ChatServer/apps/gateway/internal/utils"
-	userpb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/pkg/logger"
 	"context"
 	"time"
 )
 
-// Login 用户登录服务
+// loginServiceImpl 登录服务实现
+type loginServiceImpl struct {
+	userClient pb.UserServiceClient
+}
+
+// NewLoginService 创建登录服务实例
+// userClient: 用户服务 gRPC 客户端
+func NewLoginService(userClient pb.UserServiceClient) LoginService {
+	return &loginServiceImpl{
+		userClient: userClient,
+	}
+}
+
+// Login 用户登录
 // ctx: 请求上下文
-// req: 登录请求(包含电话、密码、设备信息)
+// req: 登录请求
 // deviceId: 设备ID
-// 返回: 登录响应和错误
-func Login(ctx context.Context, req *dto.LoginRouterToService, deviceId string) (*dto.ServiceLoginResponse, error) {
+// 返回: 完整的登录响应（包含Token和用户信息）
+func (s *loginServiceImpl) Login(ctx context.Context, req *dto.LoginRequest, deviceId string) (*dto.LoginResponse, error) {
 	startTime := time.Now()
 
-	// 1. 调用用户服务进行身份认证(gRPC)，使用重试机制
-	grpcReq := &userpb.LoginRequest{
-		Telephone: req.Telephone,
-		Password:  req.Password,
-	}
+	// 1. 转换 DTO 为 Protobuf 请求
+	grpcReq := dto.ConvertToProtoLoginRequest(req)
 
-	grpcResp, err := pb.Login(ctx, grpcReq)
+	// 2. 调用用户服务进行身份认证(gRPC)
+	grpcResp, err := s.userClient.Login(ctx, grpcReq)
 	if err != nil {
 		// gRPC 调用失败，提取业务错误码
 		grpcErr := utils.ExtractGRPCError(err)
@@ -38,75 +48,89 @@ func Login(ctx context.Context, req *dto.LoginRouterToService, deviceId string) 
 			logger.Duration("duration", time.Since(startTime)),
 		)
 
-		// 返回业务错误（不返回 Go error，因为这是预期的业务失败）
-		return &dto.ServiceLoginResponse{
-			Code:    int(grpcErr.Code),
-			Message: "",
-			Data:    nil,
-		}, nil
+		// 返回业务错误（作为 Go error 返回，由 Handler 层处理）
+		return nil, &BusinessError{
+			Code:    grpcErr.Code,
+			Message: grpcErr.Message,
+		}
 	}
 
-	// 2. gRPC 调用成功，检查响应数据
+	// 3. gRPC 调用成功，检查响应数据
 	if grpcResp.UserInfo == nil {
 		// 成功返回但 UserInfo 为空，属于非预期的异常情况
 		logger.Error(ctx, "gRPC 成功响应但用户信息为空")
-		return &dto.ServiceLoginResponse{
+		return nil, &BusinessError{
 			Code:    consts.CodeInternalError,
-			Message: "",
-			Data:    nil,
-		}, nil
+			Message: "用户信息为空",
+		}
 	}
 
-	// 3. 令牌生成逻辑
-	// 生成 Access Token，用于后续接口请求的身份校验
-	accessToken, err := utils.GenerateToken(grpcResp.UserInfo.Uuid, deviceId)
+	// 4. 生成访问令牌
+	accessToken, err := s.generateAccessToken(ctx, grpcResp.UserInfo.Uuid, deviceId)
 	if err != nil {
-		// Token 生成失败通常是内部算法或 JWT 配置问题
-		logger.Error(ctx, "生成 Access Token 失败",
-			logger.ErrorField("error", err),
-		)
-		return &dto.ServiceLoginResponse{
+		return nil, &BusinessError{
 			Code:    consts.CodeInternalError,
-			Message: "",
-			Data:    nil,
-		}, nil
+			Message: "生成访问令牌失败",
+		}
 	}
 
-	// 生成 Refresh Token，用于 Access Token 过期后的无感刷新
-	refreshToken, err := utils.GenerateRefreshToken(grpcResp.UserInfo.Uuid, deviceId)
+	// 5. 生成刷新令牌
+	refreshToken, err := s.generateRefreshToken(ctx, grpcResp.UserInfo.Uuid, deviceId)
 	if err != nil {
-		// Refresh Token 生成失败也视为系统异常
-		logger.Error(ctx, "生成 Refresh Token 失败",
-			logger.ErrorField("error", err),
-		)
-		return &dto.ServiceLoginResponse{
+		return nil, &BusinessError{
 			Code:    consts.CodeInternalError,
-			Message: "",
-			Data:    nil,
-		}, nil
+			Message: "生成刷新令牌失败",
+		}
 	}
 
-	// 4. 构造响应
+	// 6. 构造完整的登录响应
 	loginResponse := &dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    int64(utils.AccessExpire / time.Second),
-		UserInfo: dto.UserInfo{
-			UUID:      grpcResp.UserInfo.Uuid,
-			Nickname:  grpcResp.UserInfo.Nickname,
-			Telephone: grpcResp.UserInfo.Telephone,
-			Email:     grpcResp.UserInfo.Email,
-			Avatar:    grpcResp.UserInfo.Avatar,
-			Gender:    int8(grpcResp.UserInfo.Gender),
-			Signature: grpcResp.UserInfo.Signature,
-			Birthday:  grpcResp.UserInfo.Birthday,
-		},
+		UserInfo:     dto.ConvertUserInfoFromProto(grpcResp.UserInfo),
 	}
 
-	return &dto.ServiceLoginResponse{
-		Code:    0,
-		Message: "",
-		Data:    loginResponse,
-	}, nil
+	// 记录成功日志
+	logger.Info(ctx, "登录服务处理成功",
+		logger.String("user_uuid", grpcResp.UserInfo.Uuid),
+		logger.Duration("duration", time.Since(startTime)),
+	)
+
+	return loginResponse, nil
+}
+
+// generateAccessToken 生成访问令牌（聚合的 Token 服务）
+func (s *loginServiceImpl) generateAccessToken(ctx context.Context, userUUID, deviceID string) (string, error) {
+	accessToken, err := utils.GenerateToken(userUUID, deviceID)
+	if err != nil {
+		logger.Error(ctx, "生成 Access Token 失败",
+			logger.ErrorField("error", err),
+		)
+		return "", err
+	}
+	return accessToken, nil
+}
+
+// generateRefreshToken 生成刷新令牌（聚合的 Token 服务）
+func (s *loginServiceImpl) generateRefreshToken(ctx context.Context, userUUID, deviceID string) (string, error) {
+	refreshToken, err := utils.GenerateRefreshToken(userUUID, deviceID)
+	if err != nil {
+		logger.Error(ctx, "生成 Refresh Token 失败",
+			logger.ErrorField("error", err),
+		)
+		return "", err
+	}
+	return refreshToken, nil
+}
+
+// BusinessError 业务错误
+type BusinessError struct {
+	Code    int32
+	Message string
+}
+
+func (e *BusinessError) Error() string {
+	return e.Message
 }

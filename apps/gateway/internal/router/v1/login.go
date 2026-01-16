@@ -14,6 +14,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// LoginHandler 登录处理器
+type LoginHandler struct {
+	loginService service.LoginService
+}
+
+// NewLoginHandler 创建登录处理器
+// loginService: 登录服务
+func NewLoginHandler(loginService service.LoginService) *LoginHandler {
+	return &LoginHandler{
+		loginService: loginService,
+	}
+}
+
 // Login 用户登录接口
 // @Summary 用户登录
 // @Description 用户通过手机号和密码登录
@@ -23,7 +36,7 @@ import (
 // @Param request body dto.LoginRequest true "登录请求"
 // @Success 200 {object} dto.LoginResponse
 // @Router /api/v1/public/login [post]
-func Login(c *gin.Context) {
+func (h *LoginHandler) Login(c *gin.Context) {
 	ctx := middleware.NewContextWithGin(c)
 	traceId := c.GetString("trace_id")
 	ip := c.ClientIP()
@@ -38,7 +51,6 @@ func Login(c *gin.Context) {
 		return
 	}
 
-
 	// 2. 获取设备ID
 	// 优先从 Header 获取设备唯一标识，若无则生成一个新的 UUID 标识当前设备
 	deviceId := c.GetHeader("X-Device-ID")
@@ -49,40 +61,36 @@ func Login(c *gin.Context) {
 		)
 	}
 
-	// 3. 构造服务层请求
-	serviceReq := &dto.LoginRouterToService{
-		Telephone:  req.Telephone,
-		Password:   req.Password,
-		DeviceInfo: req.DeviceInfo,
-	}
-
-	// 4. 调用服务层处理业务逻辑
-	serviceResp, err := service.Login(ctx, serviceReq, deviceId)
+	// 3. 调用服务层处理业务逻辑（依赖注入）
+	loginResp, err := h.loginService.Login(ctx, &req, deviceId)
 	if err != nil {
-		// 服务层发生内部错误
+		// 检查是否为业务错误
+		if bizErr, ok := err.(*service.BusinessError); ok {
+			// 业务逻辑失败（如密码错误、账号锁定等）
+			result.Fail(c, nil, bizErr.Code)
+			return
+		}
+
+		// 其他内部错误
+		logger.Error(ctx, "登录服务内部错误",
+			logger.ErrorField("error", err),
+		)
 		result.Fail(c, nil, consts.CodeInternalError)
 		return
 	}
 
-	// 5. 处理服务层返回的业务响应
-	if serviceResp.Code != 0 {
-		// 业务逻辑失败（如密码错误、账号锁定等）
-		result.Fail(c, nil, int32(serviceResp.Code))
-		return
-	}
-
-	// 6. 记录登录成功日志
+	// 4. 记录登录成功日志
 	totalDuration := time.Since(startTime)
 	logger.Info(ctx, "登录成功",
 		logger.String("trace_id", traceId),
 		logger.String("ip", ip),
-		logger.String("user_uuid", utils.MaskUUID(serviceResp.Data.UserInfo.UUID)),
-		logger.String("telephone", utils.MaskTelephone(serviceResp.Data.UserInfo.Telephone)),
-		logger.String("nickname", serviceResp.Data.UserInfo.Nickname),
+		logger.String("user_uuid", utils.MaskUUID(loginResp.UserInfo.UUID)),
+		logger.String("telephone", utils.MaskTelephone(loginResp.UserInfo.Telephone)),
+		logger.String("nickname", loginResp.UserInfo.Nickname),
 		logger.String("platform", req.DeviceInfo.Platform),
 		logger.Duration("total_duration", totalDuration),
 	)
 
-	// 7. 返回成功响应
-	result.Success(c, serviceResp.Data)
+	// 5. 返回成功响应
+	result.Success(c, loginResp)
 }
