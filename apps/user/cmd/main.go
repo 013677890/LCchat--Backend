@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 
 	"ChatServer/apps/user/internal/handler"
+	"ChatServer/apps/user/internal/interceptors"
 	"ChatServer/apps/user/internal/repository"
 	"ChatServer/apps/user/internal/server"
 	"ChatServer/apps/user/internal/service"
@@ -82,4 +84,26 @@ func main() {
 	}); err != nil {
 		log.Fatalf("启动gRPC服务失败: %v", err)
 	}
+
+	// 7. 启动 Metrics HTTP Server（暴露 Prometheus 指标）
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", interceptors.GetMetricsHandler())
+
+	metricsAddr := ":9091"
+	metricsServer := &http.Server{
+		Addr:    metricsAddr,
+		Handler: metricsMux,
+	}
+
+	go func() {
+		logger.Info(ctx, "Metrics HTTP Server 启动中", logger.String("address", metricsAddr))
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error(ctx, "Metrics HTTP Server 启动失败", logger.ErrorField("error", err))
+		}
+	}()
+
+	logger.Info(ctx, "User 服务启动成功",
+		logger.String("grpc_address", opts.Address),
+		logger.String("metrics_address", metricsAddr),
+	)
 }

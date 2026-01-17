@@ -8,13 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"ChatServer/apps/user/internal/interceptors"
 	"ChatServer/pkg/logger"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
@@ -33,11 +33,11 @@ type Options struct {
 // Start 启动 gRPC Server，负责创建监听、注册服务、处理优雅停机。
 // register 由业务方传入，在此回调中完成各服务的 Register。
 func Start(ctx context.Context, opts Options, register func(s *grpc.Server, health healthgrpc.HealthServer)) error {
-	if opts.Address == "" {//如果地址为空，返回错误
+	if opts.Address == "" { //如果地址为空，返回错误
 		return status.Error(codes.InvalidArgument, "grpc address is empty")
 	}
 
-	grpcOpts := buildServerOptions(opts)//构建grpc.ServerOption
+	grpcOpts := buildServerOptions(opts) //构建grpc.ServerOption
 	s := grpc.NewServer(grpcOpts...)
 
 	// 健康检查
@@ -67,7 +67,7 @@ func Start(ctx context.Context, opts Options, register func(s *grpc.Server, heal
 	go gracefulStop(ctx, s)
 
 	logger.Info(ctx, "gRPC server start", logger.String("addr", opts.Address))
-	if err := s.Serve(lis); err != nil {//开始接收请求
+	if err := s.Serve(lis); err != nil { //开始接收请求
 		return err
 	}
 	return nil
@@ -85,15 +85,18 @@ func buildServerOptions(opts Options) []grpc.ServerOption {
 		serverOpts = append(serverOpts, grpc.MaxSendMsgSize(opts.MaxSendMsgSize))
 	}
 
-	// 默认拦截器（Recovery + Logging）
+	// 默认拦截器（Recovery + RateLimit + Metrics + Logging）
+	// 执行顺序：Recovery(最外层) -> RateLimit -> Metrics -> Logging(最内层）
 	unaryInters := []grpc.UnaryServerInterceptor{
-		recoveryUnaryInterceptor(),
-		loggingUnaryInterceptor(),
+		interceptors.RecoveryUnaryInterceptor(),  // 1. panic 恢复
+		interceptors.RateLimitUnaryInterceptor(), // 2. 全局限流（使用默认配置）
+		interceptors.MetricsUnaryInterceptor(),   // 3. 监控指标（QPS、耗时等）
+		interceptors.LoggingUnaryInterceptor(),   // 4. 日志记录
 	}
-	unaryInters = append(unaryInters, opts.UnaryInterceptors...)//添加自定义拦截器
-	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInters...))//构建拦截器链
+	unaryInters = append(unaryInters, opts.UnaryInterceptors...)                // 添加自定义拦截器
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInters...)) // 构建拦截器链
 
-	if len(opts.StreamInterceptors) > 0 {//添加自定义流拦截器
+	if len(opts.StreamInterceptors) > 0 { //添加自定义流拦截器
 		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(opts.StreamInterceptors...))
 	}
 
@@ -125,55 +128,6 @@ func gracefulStop(ctx context.Context, s *grpc.Server) {
 	case <-time.After(10 * time.Second):
 		logger.Warn(ctx, "graceful stop timeout, force stop")
 		s.Stop()
-	}
-}
-
-// recoveryUnaryInterceptor 捕获 panic，避免进程崩溃。
-func recoveryUnaryInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error(ctx, "panic recovered in grpc handler",
-					logger.Any("panic", r),
-					logger.String("method", info.FullMethod),
-				)
-				err = status.Error(codes.Internal, "internal server error")
-			}
-		}()
-		return handler(ctx, req)
-	}
-}
-
-// loggingUnaryInterceptor 记录基础日志（方法、耗时、错误码、trace_id）。
-func loggingUnaryInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		start := time.Now()
-		resp, err = handler(ctx, req)
-		code := status.Code(err)
-
-		traceID := ""
-		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			if vals := md.Get("trace_id"); len(vals) > 0 {
-				traceID = vals[0]
-			}
-		}
-
-		fields := []interface{}{
-			logger.String("method", info.FullMethod),
-			logger.Duration("cost", time.Since(start)),
-			logger.String("code", code.String()),
-		}
-		if traceID != "" {
-			fields = append(fields, logger.String("trace_id", traceID))
-		}
-		if err != nil {
-			fields = append(fields, logger.ErrorField("error", err))
-			logger.Warn(ctx, "grpc unary request")
-		} else {
-			logger.Info(ctx, "grpc unary request")
-		}
-
-		return resp, err
 	}
 }
 
