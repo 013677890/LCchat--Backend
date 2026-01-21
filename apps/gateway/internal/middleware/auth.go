@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"ChatServer/apps/gateway/internal/utils"
+	"ChatServer/pkg/util"
 	"net/http"
 	"strings"
 
@@ -39,7 +39,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		tokenString := parts[1]
 
 		// 3. 解析并验证 Token
-		claims, err := utils.ParseToken(tokenString)
+		claims, err := util.ParseToken(tokenString)
 		if err != nil {
 			// Token 无效或过期,属于正常业务流程,不记录日志
 			c.JSON(http.StatusUnauthorized, gin.H{

@@ -79,11 +79,6 @@ func (s *AuthServiceImpl) Login(ctx context.Context, req *dto.LoginRequest, devi
 		}
 	}
 */
-	// 记录成功日志
-	logger.Info(ctx, "登录服务处理成功",
-		logger.String("user_uuid", grpcResp.UserInfo.Uuid),
-		logger.Duration("duration", time.Since(startTime)),
-	)
 
 	return dto.ConvertLoginResponseFromProto(grpcResp), nil
 }

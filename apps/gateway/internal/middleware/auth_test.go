@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	"ChatServer/apps/gateway/internal/utils"
 	"ChatServer/pkg/logger"
+	"ChatServer/pkg/util"
 )
 
 // init 初始化 logger（测试模式，不输出日志）
@@ -23,7 +23,7 @@ func init() {
 
 // generateTestToken 生成测试用的 Token
 func generateTestToken() string {
-	token, err := utils.GenerateToken("test-user-uuid", "test-device-id")
+	token, err := util.GenerateToken("test-user-uuid", "test-device-id")
 	if err != nil {
 		panic(err)
 	}
@@ -146,7 +146,7 @@ func TestJWTAuthMiddleware_InvalidToken(t *testing.T) {
 // generateExpiredToken 生成过期的 Token
 func generateExpiredToken() string {
 	now := time.Now().Add(-1 * time.Hour) // 1 小时前过期
-	claims := &utils.CustomClaims{
+	claims := &util.CustomClaims{
 		UserUUID: "test-user-uuid",
 		DeviceID: "test-device-id",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -158,7 +158,7 @@ func generateExpiredToken() string {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(utils.JWTSecret))
+	tokenString, err := token.SignedString([]byte(util.JWTSecret))
 	if err != nil {
 		panic(err)
 	}

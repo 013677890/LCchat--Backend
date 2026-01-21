@@ -9,7 +9,6 @@ import (
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/result"
 	"ChatServer/pkg/util"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -38,10 +37,6 @@ func NewAuthHandler(authService service.AuthService) *AuthHandler {
 // @Router /api/v1/public/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	ctx := middleware.NewContextWithGin(c)
-	traceId := c.GetString("trace_id")
-	ip := c.ClientIP()
-
-	startTime := time.Now()
 
 	// 1. 绑定请求数据
 	var req dto.LoginRequest
@@ -79,17 +74,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 4. 记录登录成功日志
-	totalDuration := time.Since(startTime)
-	logger.Info(ctx, "登录成功",
-		logger.String("trace_id", traceId),
-		logger.String("ip", ip),
-		logger.String("user_uuid", utils.MaskUUID(loginResp.UserInfo.UUID)),
-		logger.String("telephone", utils.MaskTelephone(loginResp.UserInfo.Telephone)),
-		logger.String("nickname", loginResp.UserInfo.Nickname),
-		logger.String("platform", req.DeviceInfo.Platform),
-		logger.Duration("total_duration", totalDuration),
-	)
 
 	// 5. 返回成功响应
 	result.Success(c, loginResp)
