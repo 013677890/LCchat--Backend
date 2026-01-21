@@ -339,6 +339,55 @@ func (c *userServiceClientImpl) BatchGetOnlineStatus(ctx context.Context, req *u
 }
 
 // ==================== 通用工具函数 ====================
+// CreateConnection 通用的 gRPC 连接创建函数
+// addr: 服务地址，格式为 "host:port"
+// serviceName: 服务名称（用于重试策略配置）
+// breaker: 熔断器实例
+// 返回: gRPC 连接和错误
+func CreateConnection(addr string, serviceName string, breaker *gobreaker.CircuitBreaker) (*grpc.ClientConn, error) {
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(retryPolicy), // 应用重试策略
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB接收大小
+		),
+		// 注入熔断拦截器
+		grpc.WithChainUnaryInterceptor(
+			middleware.CircuitBreakerInterceptor(breaker),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+// CreateCircuitBreaker 创建熔断器实例
+// name: 熔断器名称
+// 返回: 熔断器实例
+func CreateCircuitBreaker(name string) *gobreaker.CircuitBreaker {
+	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        name,
+		MaxRequests: 3,                // 半开状态下最多允许 3 个请求尝试
+		Interval:    15 * time.Second, // 清除计数的时间间隔
+		Timeout:     45 * time.Second, // 熔断器开启后多久尝试进入半开状态
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			// 失败率超过 50% 且连续失败次数超过 5 次时触发熔断
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			return counts.Requests >= 5 && failureRatio >= 0.5
+		},
+		OnStateChange: func(name string, from, to gobreaker.State) {
+			logger.Info(context.Background(), "熔断器状态变化",
+				logger.String("name", name),
+				logger.String("from", from.String()),
+				logger.String("to", to.String()),
+			)
+		},
+	})
+}
+
 
 // ExecuteWithBreaker 是一个独立的通用函数，不再挂载在 userServiceClientImpl 下
 // breaker: 传入熔断器实例
@@ -429,53 +478,4 @@ func CreateBlacklistServiceConnection(addr string, breaker *gobreaker.CircuitBre
 // 返回: gRPC 连接和错误
 func CreateDeviceServiceConnection(addr string, breaker *gobreaker.CircuitBreaker) (*grpc.ClientConn, error) {
 	return CreateConnection(addr, "user.DeviceService", breaker)
-}
-
-// CreateConnection 通用的 gRPC 连接创建函数
-// addr: 服务地址，格式为 "host:port"
-// serviceName: 服务名称（用于重试策略配置）
-// breaker: 熔断器实例
-// 返回: gRPC 连接和错误
-func CreateConnection(addr string, serviceName string, breaker *gobreaker.CircuitBreaker) (*grpc.ClientConn, error) {
-	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultServiceConfig(retryPolicy), // 应用重试策略
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB接收大小
-		),
-		// 注入熔断拦截器
-		grpc.WithChainUnaryInterceptor(
-			middleware.CircuitBreakerInterceptor(breaker),
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-// CreateCircuitBreaker 创建熔断器实例
-// name: 熔断器名称
-// 返回: 熔断器实例
-func CreateCircuitBreaker(name string) *gobreaker.CircuitBreaker {
-	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name:        name,
-		MaxRequests: 3,                // 半开状态下最多允许 3 个请求尝试
-		Interval:    15 * time.Second, // 清除计数的时间间隔
-		Timeout:     45 * time.Second, // 熔断器开启后多久尝试进入半开状态
-		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			// 失败率超过 50% 且连续失败次数超过 5 次时触发熔断
-			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= 5 && failureRatio >= 0.5
-		},
-		OnStateChange: func(name string, from, to gobreaker.State) {
-			logger.Info(context.Background(), "熔断器状态变化",
-				logger.String("name", name),
-				logger.String("from", from.String()),
-				logger.String("to", to.String()),
-			)
-		},
-	})
 }
