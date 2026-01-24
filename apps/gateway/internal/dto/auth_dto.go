@@ -130,11 +130,14 @@ func ConvertToProtoLoginRequest(dto *LoginRequest) *userpb.LoginRequest {
 		return nil
 	}
 
-	deviceInfo := &userpb.DeviceInfo{
-		DeviceName: dto.DeviceInfo.DeviceName,
-		Platform:   dto.DeviceInfo.Platform,
-		OsVersion:  dto.DeviceInfo.OSVersion,
-		AppVersion: dto.DeviceInfo.AppVersion,
+	var deviceInfo *userpb.DeviceInfo
+	if dto.DeviceInfo != nil {
+		deviceInfo = &userpb.DeviceInfo{
+			DeviceName: dto.DeviceInfo.DeviceName,
+			Platform:   dto.DeviceInfo.Platform,
+			OsVersion:  dto.DeviceInfo.OSVersion,
+			AppVersion: dto.DeviceInfo.AppVersion,
+		}
 	}
 
 	return &userpb.LoginRequest{
@@ -150,11 +153,14 @@ func ConvertToProtoLoginByCodeRequest(dto *LoginByCodeRequest) *userpb.LoginByCo
 		return nil
 	}
 
-	deviceInfo := &userpb.DeviceInfo{
-		DeviceName: dto.DeviceInfo.DeviceName,
-		Platform:   dto.DeviceInfo.Platform,
-		OsVersion:  dto.DeviceInfo.OSVersion,
-		AppVersion: dto.DeviceInfo.AppVersion,
+	var deviceInfo *userpb.DeviceInfo
+	if dto.DeviceInfo != nil {
+		deviceInfo = &userpb.DeviceInfo{
+			DeviceName: dto.DeviceInfo.DeviceName,
+			Platform:   dto.DeviceInfo.Platform,
+			OsVersion:  dto.DeviceInfo.OSVersion,
+			AppVersion: dto.DeviceInfo.AppVersion,
+		}
 	}
 
 	return &userpb.LoginByCodeRequest{
