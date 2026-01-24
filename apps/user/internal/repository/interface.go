@@ -28,11 +28,21 @@ type IAuthRepository interface {
 	// VerifyVerifyCode 校验验证码
 	VerifyVerifyCode(ctx context.Context, email, verifyCode string) (bool, error)
 
+	// StoreVerifyCode 存储验证码到Redis（带过期时间）
+	StoreVerifyCode(ctx context.Context, email, verifyCode string, expireDuration time.Duration) error
+
 	// UpdateLastLogin 更新最后登录时间
 	UpdateLastLogin(ctx context.Context, userUUID string) error
 
 	// UpdatePassword 更新密码
 	UpdatePassword(ctx context.Context, userUUID, password string) error
+
+	// VerifyVerifyCodeRateLimit 验证码限流校验
+	// 返回值: true=触发限流(不允许发送), false=未触发限流(允许发送)
+	VerifyVerifyCodeRateLimit(ctx context.Context, email string, ip string) (bool, error)
+
+	// IncrementVerifyCodeCount 递增验证码发送计数（发送验证码时调用）
+	IncrementVerifyCodeCount(ctx context.Context, email string, ip string) error
 }
 
 // ==================== 用户信息 Repository ====================

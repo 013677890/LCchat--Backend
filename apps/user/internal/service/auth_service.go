@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
@@ -251,10 +252,70 @@ func (s *authServiceImpl) SendVerifyCode(ctx context.Context, req *pb.SendVerify
 		logger.String("email", req.Email),
 	)
 
-	// 1. 校验邮箱
-	// 2. 限流检查
-	// 3. 发送验证码存入Redis
-	
+	// 1. 校验邮箱格式
+	if !util.ValidateEmail(req.Email) {
+		logger.Warn(ctx, "邮箱格式无效",
+			logger.String("email", req.Email),
+		)
+		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeInvalidEmail))
+	}
+
+	// 2. 限流检查（防止频繁发送）
+	ip := util.GetClientIPFromContext(ctx)
+	isLimited, err := s.authRepo.VerifyVerifyCodeRateLimit(ctx, req.Email, ip)
+	if err != nil {
+		logger.Error(ctx, "验证码限流检查失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+	if isLimited {
+		return nil, status.Error(codes.ResourceExhausted, strconv.Itoa(consts.CodeSendTooFrequent))
+	}
+
+	// 3. 生成6位验证码
+	code, err := util.GenerateVerifyCode(6)
+	if err != nil {
+		logger.Error(ctx, "生成验证码失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 4. 存储验证码到Redis（2分钟过期）
+	err = s.authRepo.StoreVerifyCode(ctx, req.Email, code, 2*time.Minute)
+	if err != nil {
+		logger.Error(ctx, "存储验证码失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 5. 递增限流计数
+	err = s.authRepo.IncrementVerifyCodeCount(ctx, req.Email, ip)
+	if err != nil {
+		logger.Warn(ctx, "递增验证码计数失败",
+			logger.ErrorField("error", err),
+		)
+		// 不影响主流程，只记录日志
+	}
+
+	// 6. 发送验证码邮件
+	err = util.SendVerifyCodeEmail(req.Email, code, 2) // 2分钟有效期
+	if err != nil {
+		logger.Error(ctx, "发送验证码邮件失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	logger.Info(ctx, "验证码发送成功",
+		logger.String("email", req.Email),
+	)
+
+	return &pb.SendVerifyCodeResponse{
+		ExpireSeconds: 120, // 2分钟=120秒
+	}, nil
 }
 
 // VerifyCode 校验验证码

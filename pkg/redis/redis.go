@@ -25,16 +25,16 @@ func Build(cfg config.RedisConfig) (*goredis.Client, error) {
 	}
 
 	client := goredis.NewClient(&goredis.Options{
-		Addr:            cfg.Addr, // host:port
-		Password:        cfg.Password, // 可空
-		DB:              cfg.DB, // DB 索引，默认 0
-		PoolSize:        cfg.PoolSize, // 连接池大小
+		Addr:            cfg.Addr,         // host:port
+		Password:        cfg.Password,     // 可空
+		DB:              cfg.DB,           // DB 索引，默认 0
+		PoolSize:        cfg.PoolSize,     // 连接池大小
 		MinIdleConns:    cfg.MinIdleConns, // 最小空闲连接
-		DialTimeout:     cfg.DialTimeout, // 建连超时
-		ReadTimeout:     cfg.ReadTimeout, // 读超时
+		DialTimeout:     cfg.DialTimeout,  // 建连超时
+		ReadTimeout:     cfg.ReadTimeout,  // 读超时
 		WriteTimeout:    cfg.WriteTimeout, // 写超时
-		PoolTimeout:     cfg.PoolTimeout, // 从池获取连接超时
-		ConnMaxIdleTime: cfg.ConnMaxIdle, // 连接最大空闲时间（对应 go-redis ConnMaxIdleTime）
+		PoolTimeout:     cfg.PoolTimeout,  // 从池获取连接超时
+		ConnMaxIdleTime: cfg.ConnMaxIdle,  // 连接最大空闲时间（对应 go-redis ConnMaxIdleTime）
 	})
 
 	if err := client.Ping(context.Background()).Err(); err != nil {

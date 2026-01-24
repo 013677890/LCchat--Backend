@@ -4,6 +4,7 @@ import (
 	"ChatServer/model"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -46,6 +47,18 @@ func (r *authRepositoryImpl) VerifyVerifyCode(ctx context.Context, email, verify
 	return verifyCodeValue == verifyCode, nil
 }
 
+// StoreVerifyCode 存储验证码到Redis（带过期时间）
+func (r *authRepositoryImpl) StoreVerifyCode(ctx context.Context, email, verifyCode string, expireDuration time.Duration) error {
+	verifyCodeKey := fmt.Sprintf("user:verify_code:%s", email)
+
+	// 使用 Set 方法设置值并指定过期时间
+	err := r.redisClient.Set(ctx, verifyCodeKey, verifyCode, expireDuration).Err()
+	if err != nil {
+		return WrapRedisError(err)
+	}
+	return nil
+}
+
 // ExistsByPhone 检查手机号是否已存在
 func (r *authRepositoryImpl) ExistsByPhone(ctx context.Context, telephone string) (bool, error) {
 	return false, nil // TODO: 检查手机号是否已存在
@@ -73,4 +86,75 @@ func (r *authRepositoryImpl) UpdateLastLogin(ctx context.Context, userUUID strin
 // UpdatePassword 更新密码
 func (r *authRepositoryImpl) UpdatePassword(ctx context.Context, userUUID, password string) error {
 	return nil // TODO: 更新密码
+}
+
+// VerifyVerifyCodeRateLimit 验证码限流校验
+// 返回值: true=触发限流(不允许发送), false=未触发限流(允许发送)
+func (r *authRepositoryImpl) VerifyVerifyCodeRateLimit(ctx context.Context, email, ip string) (bool, error) {
+	// ==================== 1分钟限流（基于邮箱）====================
+	minuteKey := fmt.Sprintf("user:verify_code:1m:%s", email)
+	minuteCount, err := r.redisClient.Get(ctx, minuteKey).Int()
+	if err != nil && err != redis.Nil {
+		return false, WrapRedisError(err)
+	}
+
+	if minuteCount >= 1 {
+		return true, nil // 1分钟内已发送过，限流
+	}
+
+	// ==================== 24小时限流（基于邮箱）====================
+	hour24Key := fmt.Sprintf("user:verify_code:24h:%s", email)
+	hour24Count, err := r.redisClient.Get(ctx, hour24Key).Int()
+	if err != nil && err != redis.Nil {
+		return false, WrapRedisError(err)
+	}
+
+	if hour24Count >= 10 {
+		return true, nil // 24小时内已发送超过10次，限流
+	}
+
+	// ==================== 1小时限流（基于IP）====================
+	hour1Key := fmt.Sprintf("user:verify_code:1h:%s", ip)
+	hour1Count, err := r.redisClient.Get(ctx, hour1Key).Int()
+	if err != nil && err != redis.Nil {
+		return false, WrapRedisError(err)
+	}
+
+	if hour1Count >= 100 {
+		return true, nil // 1小时内该IP已发送超过100次，限流
+	}
+
+	return false, nil // 未触发限流，允许发送
+}
+
+// IncrementVerifyCodeCount 递增验证码发送计数（发送验证码时调用）
+func (r *authRepositoryImpl) IncrementVerifyCodeCount(ctx context.Context, email, ip string) error {
+	// 使用 Lua 脚本保证原子性：只在首次创建时设置过期时间
+	// 使用pipe包装，保证原子性
+	pipe := r.redisClient.Pipeline()
+	
+	// 1分钟计数器（过期时间60秒）
+	minuteKey := fmt.Sprintf("user:verify_code:1m:%s", email)
+	if _, err := pipe.Eval(ctx, luaIncrementWithExpire, []string{minuteKey}, 60).Result(); err != nil {
+		return WrapRedisError(err)
+	}
+
+	// 24小时计数器（过期时间24小时 = 86400秒）
+	hour24Key := fmt.Sprintf("user:verify_code:24h:%s", email)
+	if _, err := pipe.Eval(ctx, luaIncrementWithExpire, []string{hour24Key}, 86400).Result(); err != nil {
+		return WrapRedisError(err)
+	}
+
+	// 1小时IP计数器（过期时间1小时 = 3600秒）
+	hour1Key := fmt.Sprintf("user:verify_code:1h:%s", ip)
+	if _, err := pipe.Eval(ctx, luaIncrementWithExpire, []string{hour1Key}, 3600).Result(); err != nil {
+		return WrapRedisError(err)
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return WrapRedisError(err)
+	}
+
+	return nil
 }
