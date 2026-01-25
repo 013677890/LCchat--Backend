@@ -31,6 +31,9 @@ type IAuthRepository interface {
 	// StoreVerifyCode 存储验证码到Redis（带过期时间）
 	StoreVerifyCode(ctx context.Context, email, verifyCode string, expireDuration time.Duration) error
 
+	// DeleteVerifyCode 删除验证码（消耗验证码）
+	DeleteVerifyCode(ctx context.Context, email string) error
+
 	// UpdateLastLogin 更新最后登录时间
 	UpdateLastLogin(ctx context.Context, userUUID string) error
 

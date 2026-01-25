@@ -26,4 +26,11 @@ type AuthService interface {
 	// req: 发送验证码请求
 	// 返回: 发送验证码响应
 	SendVerifyCode(ctx context.Context, req *dto.SendVerifyCodeRequest) (*dto.SendVerifyCodeResponse, error)
+
+	// LoginByCode 验证码登录
+	// ctx: 请求上下文
+	// req: 验证码登录请求
+	// deviceId: 设备唯一标识
+	// 返回: 完整的登录响应（包含Token和用户信息）
+	LoginByCode(ctx context.Context, req *dto.LoginByCodeRequest, deviceId string) (*dto.LoginByCodeResponse, error)
 }

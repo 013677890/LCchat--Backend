@@ -7,9 +7,9 @@ import (
 	"ChatServer/consts"
 	"ChatServer/pkg/logger"
 	"context"
-	"time"
 	"errors"
 	"strconv"
+	"time"
 )
 
 // AuthServiceImpl 认证服务实现
@@ -126,4 +126,42 @@ func (s *AuthServiceImpl) SendVerifyCode(ctx context.Context, req *dto.SendVerif
 	}
 
 	return dto.ConvertSendVerifyCodeResponseFromProto(grpcResp), nil
+}
+
+// LoginByCode 验证码登录
+// ctx: 请求上下文
+// req: 验证码登录请求
+// deviceId: 设备ID
+// 返回: 完整的登录响应（包含Token和用户信息）
+func (s *AuthServiceImpl) LoginByCode(ctx context.Context, req *dto.LoginByCodeRequest, deviceId string) (*dto.LoginByCodeResponse, error) {
+	startTime := time.Now()
+
+	// 1. 转换 DTO 为 Protobuf 请求
+	grpcReq := dto.ConvertToProtoLoginByCodeRequest(req)
+
+	// 2. 调用用户服务进行验证码登录(gRPC)
+	grpcResp, err := s.userClient.LoginByCode(ctx, grpcReq)
+	if err != nil {
+		// gRPC 调用失败，提取业务错误码
+		code := utils.ExtractErrorCode(err)
+		// 记录错误日志
+		logger.Error(ctx, "调用用户服务 gRPC 失败",
+			logger.ErrorField("error", err),
+			logger.Int("business_code", code),
+			logger.String("business_message", consts.GetMessage(code)),
+			logger.Duration("duration", time.Since(startTime)),
+		)
+
+		// 返回业务错误（作为 Go error 返回，由 Handler 层处理）
+		return nil, err
+	}
+
+	// 3. gRPC 调用成功，检查响应数据
+	if grpcResp.UserInfo == nil {
+		// 成功返回但 UserInfo 为空，属于非预期的异常情况
+		logger.Error(ctx, "gRPC 成功响应但用户信息为空")
+		return nil, errors.New(strconv.Itoa(consts.CodeInternalError))
+	}
+
+	return dto.ConvertLoginByCodeResponseFromProto(grpcResp), nil
 }

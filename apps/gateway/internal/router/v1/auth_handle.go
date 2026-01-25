@@ -167,3 +167,62 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	// 3. 返回成功响应
 	result.Success(c, sendVerifyCodeResp)
 }
+
+// LoginByCode 验证码登录接口
+// @Summary 验证码登录
+// @Description 用户通过邮箱和验证码直接登录（无需密码）
+// @Tags 认证接口
+// @Accept json
+// @Produce json
+// @Param request body dto.LoginByCodeRequest true "验证码登录请求"
+// @Success 200 {object} dto.LoginByCodeResponse
+// @Router /api/v1/public/login-by-code [post]
+func (h *AuthHandler) LoginByCode(c *gin.Context) {
+	ctx := middleware.NewContextWithGin(c)
+
+	// 1. 绑定请求数据
+	var req dto.LoginByCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 参数错误由客户端输入导致,属于正常业务流程,不记录日志
+		result.Fail(c, nil, consts.CodeParamError)
+		return
+	}
+
+	// 2. 如果context中没有device_id,则从X-Device-ID中获取
+	deviceId, exists := c.Get("device_id")
+	if !exists {
+		// 从X-Device-ID中获取
+		deviceId = c.GetHeader("X-Device-ID")
+		//如果为空直接返回
+		if deviceId == "" {
+			logger.Error(ctx, "请求头中无设备ID",
+				logger.String("device_id", deviceId.(string)),
+			)
+			result.Fail(c, nil, consts.CodeParamError)
+			return
+		}
+		// 写入context
+		c.Set("device_id", deviceId)
+	}
+
+	// 3. 调用服务层处理业务逻辑（依赖注入）
+	loginResp, err := h.authService.LoginByCode(ctx, &req, deviceId.(string))
+	if err != nil {
+		// 检查是否为业务错误
+		if consts.IsNonServerError(utils.ExtractErrorCode(err)) {
+			// 业务逻辑失败（如验证码错误、用户不存在等）
+			result.Fail(c, nil, utils.ExtractErrorCode(err))
+			return
+		}
+
+		// 其他内部错误
+		logger.Error(ctx, "验证码登录服务内部错误",
+			logger.ErrorField("error", err),
+		)
+		result.Fail(c, nil, consts.CodeInternalError)
+		return
+	}
+
+	// 4. 返回成功响应
+	result.Success(c, loginResp)
+}

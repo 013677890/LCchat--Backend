@@ -131,6 +131,14 @@ func (s *authServiceImpl) Register(ctx context.Context, req *pb.RegisterRequest)
 //   - codes.PermissionDenied: 用户被禁用
 //   - codes.Internal: 系统内部错误
 func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
+	// 处理 DeviceInfo 为空的情况
+	if req.DeviceInfo == nil {
+		req.DeviceInfo = &pb.DeviceInfo{
+			DeviceName: "Unknown",
+			Platform:   "Unknown",
+		}
+	}
+
 	// 记录登录请求（账号脱敏）
 	logger.Info(ctx, "用户登录请求",
 		logger.String("account", utils.MaskPhone(req.Account)),
@@ -241,8 +249,151 @@ func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.
 }
 
 // LoginByCode 验证码登录
+// 业务流程：
+//  1. 根据邮箱查询用户
+//  2. 校验用户状态（是否被禁用）
+//  3. 校验验证码
+//  4. 生成Token并返回用户信息
+//
+// 错误码映射：
+//   - codes.NotFound: 用户不存在
+//   - codes.Unauthenticated: 验证码错误或已过期
+//   - codes.PermissionDenied: 用户被禁用
+//   - codes.Internal: 系统内部错误
 func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRequest) (*pb.LoginByCodeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "验证码登录功能暂未实现")
+	// 处理 DeviceInfo 为空的情况
+	if req.DeviceInfo == nil {
+		req.DeviceInfo = &pb.DeviceInfo{
+			DeviceName: "Unknown",
+			Platform:   "Unknown",
+		}
+	}
+
+	// 记录验证码登录请求（邮箱脱敏）
+	logger.Info(ctx, "验证码登录请求",
+		logger.String("email", utils.MaskPhone(req.Email)),
+		logger.String("device_name", req.DeviceInfo.GetDeviceName()),
+		logger.String("platform", req.DeviceInfo.GetPlatform()),
+	)
+
+	// 1. 根据邮箱查询用户
+	user, err := s.authRepo.GetByEmail(ctx, req.Email)
+	if err != nil {
+		// 使用 errors.Is 判断错误类型
+		if errors.Is(err, repository.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, strconv.Itoa(consts.CodeUserNotFound))
+		}
+
+		// 其他数据库错误
+		logger.Error(ctx, "查询用户失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 2. 校验用户状态
+	if user.Status == 1 {
+		return nil, status.Error(codes.PermissionDenied, strconv.Itoa(consts.CodeUserDisabled))
+	}
+
+	// 3. 校验验证码
+	isValid, err := s.authRepo.VerifyVerifyCode(ctx, req.Email, req.VerifyCode)
+	if err != nil {
+		// 判断是 Redis Key 不存在还是其他错误
+		if errors.Is(err, repository.ErrRedisNil) {
+			return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeVerifyCodeExpire))
+		}
+		logger.Error(ctx, "校验验证码失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+	if !isValid {
+		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeVerifyCodeError))
+	}
+
+	// 验证成功后立即删除验证码（消耗验证码，防止重复使用）
+	if err := s.authRepo.DeleteVerifyCode(ctx, req.Email); err != nil {
+		logger.Warn(ctx, "删除验证码失败",
+			logger.ErrorField("error", err),
+		)
+		// 删除失败不影响登录流程，只记录警告日志
+	}
+
+	// 4. 将用户uuid写入context
+	ctx = context.WithValue(ctx, "user_uuid", user.Uuid)
+
+	// 5. 从 context 中获取设备 ID 和客户端 IP
+	deviceID := util.GetDeviceIDFromContext(ctx)
+	if deviceID == "" {
+		// 如果没有从 context 中获取到，使用设备名称作为临时方案
+		deviceID = req.DeviceInfo.GetDeviceName()
+		logger.Warn(ctx, "DeviceID not found in context, using device name as fallback",
+			logger.String("device_name", deviceID),
+		)
+	}
+	clientIP := util.GetClientIPFromContext(ctx)
+
+	// 6. 生成访问令牌
+	accessToken, err := util.GenerateToken(user.Uuid, deviceID)
+	if err != nil {
+		logger.Error(ctx, "生成访问令牌失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 7. 生成刷新令牌（使用 UUID）
+	refreshToken := util.GenIDString()
+
+	// 8. 写入 Redis（AccessToken 和 RefreshToken）
+	if err := s.deviceRepo.StoreAccessToken(ctx, user.Uuid, deviceID, accessToken, util.AccessExpire); err != nil {
+		logger.Error(ctx, "AccessToken 写入 Redis 失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	if err := s.deviceRepo.StoreRefreshToken(ctx, user.Uuid, deviceID, refreshToken, util.RefreshExpire); err != nil {
+		logger.Error(ctx, "RefreshToken 写入 Redis 失败",
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 9. 设备会话落库（Upsert：存在则更新，不存在则插入）
+	deviceSession := &model.DeviceSession{
+		UserUuid:   user.Uuid,
+		DeviceId:   deviceID,
+		DeviceName: req.DeviceInfo.GetDeviceName(),
+		Platform:   req.DeviceInfo.GetPlatform(),
+		AppVersion: req.DeviceInfo.GetAppVersion(),
+		IP:         clientIP,
+		UserAgent:  req.DeviceInfo.GetOsVersion(), // 可以根据实际需求调整
+		Status:     0,                             // 0: 在线
+	}
+
+	if err := s.deviceRepo.UpsertSession(ctx, deviceSession); err != nil {
+		logger.Error(ctx, "设备会话落库失败",
+			logger.ErrorField("error", err),
+		)
+		// 注意：设备会话落库失败不应该阻止登录成功，因为 Token 已经生成
+		// 这里只记录日志，不返回错误
+	}
+
+	// 10. 登录成功，记录日志
+	logger.Info(ctx, "验证码登录成功",
+		logger.String("email", utils.MaskPhone(req.Email)),
+		logger.String("platform", req.DeviceInfo.GetPlatform()),
+	)
+
+	return &pb.LoginByCodeResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    int64(util.AccessExpire.Seconds()),
+		UserInfo:     converter.ModelToProtoUserInfo(user),
+	}, nil
 }
 
 // SendVerifyCode 发送验证码

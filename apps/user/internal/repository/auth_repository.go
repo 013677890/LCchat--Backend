@@ -59,6 +59,16 @@ func (r *authRepositoryImpl) StoreVerifyCode(ctx context.Context, email, verifyC
 	return nil
 }
 
+// DeleteVerifyCode 删除验证码（消耗验证码）
+func (r *authRepositoryImpl) DeleteVerifyCode(ctx context.Context, email string) error {
+	verifyCodeKey := fmt.Sprintf("user:verify_code:%s", email)
+	err := r.redisClient.Del(ctx, verifyCodeKey).Err()
+	if err != nil {
+		return WrapRedisError(err)
+	}
+	return nil
+}
+
 // ExistsByPhone 检查手机号是否已存在
 func (r *authRepositoryImpl) ExistsByPhone(ctx context.Context, telephone string) (bool, error) {
 	return false, nil // TODO: 检查手机号是否已存在
@@ -132,7 +142,7 @@ func (r *authRepositoryImpl) IncrementVerifyCodeCount(ctx context.Context, email
 	// 使用 Lua 脚本保证原子性：只在首次创建时设置过期时间
 	// 使用pipe包装，保证原子性
 	pipe := r.redisClient.Pipeline()
-	
+
 	// 1分钟计数器（过期时间60秒）
 	minuteKey := fmt.Sprintf("user:verify_code:1m:%s", email)
 	if _, err := pipe.Eval(ctx, luaIncrementWithExpire, []string{minuteKey}, 60).Result(); err != nil {

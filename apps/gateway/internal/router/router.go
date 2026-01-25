@@ -26,7 +26,6 @@ func InitRouter(authHandler *v1.AuthHandler) *gin.Engine {
 	// 日志中间件
 	r.Use(middleware.GinLogger())
 
-
 	// Prometheus 监控中间件
 	r.Use(middleware.PrometheusMiddleware())
 
@@ -54,6 +53,7 @@ func InitRouter(authHandler *v1.AuthHandler) *gin.Engine {
 			user := public.Group("/user")
 			{
 				user.POST("/login", authHandler.Login)
+				user.POST("/login-by-code", authHandler.LoginByCode)
 				user.POST("/register", authHandler.Register)
 				user.POST("/send-verify-code", authHandler.SendVerifyCode)
 			}
