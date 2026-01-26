@@ -68,7 +68,6 @@ message GetOtherProfileRequest {
 // GetOtherProfileResponse 获取他人信息响应
 message GetOtherProfileResponse {
 	UserInfo user_info = 1;
-	bool is_friend = 2;
 }
 
 // ==================== 更新基本信息 ====================

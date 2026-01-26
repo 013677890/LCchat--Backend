@@ -3,7 +3,6 @@ package service
 import (
 	"ChatServer/apps/user/internal/converter"
 	"ChatServer/apps/user/internal/repository"
-	"ChatServer/apps/user/internal/utils"
 	pb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/pkg/logger"
@@ -78,14 +77,7 @@ func (s *userServiceImpl) GetProfile(ctx context.Context, req *pb.GetProfileRequ
 //   - codes.NotFound: 用户不存在
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) GetOtherProfile(ctx context.Context, req *pb.GetOtherProfileRequest) (*pb.GetOtherProfileResponse, error) {
-	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
-		logger.Error(ctx, "获取用户UUID失败")
-		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
-	}
-
-	// 2. 查询目标用户信息
+	// 1. 查询目标用户信息
 	targetUserInfo, err := s.userRepo.GetByUUID(ctx, req.UserUuid)
 	if err != nil {
 		logger.Error(ctx, "查询用户信息失败",
@@ -102,27 +94,9 @@ func (s *userServiceImpl) GetOtherProfile(ctx context.Context, req *pb.GetOtherP
 		return nil, status.Error(codes.NotFound, strconv.Itoa(consts.CodeUserNotFound))
 	}
 
-	// 3. 判断是否为好友关系（这里暂时使用friendRepo，如果未实现则先跳过）
-	isFriend := false
-	// TODO: 实现好友关系查询后启用以下代码
-	// if s.friendRepo != nil {
-	// 	isFriend, _ = s.friendRepo.IsFriend(ctx, currentUserUUID, req.UserUuid)
-	// }
-
-	// 4. 非好友时脱敏邮箱和手机号
-	if !isFriend && targetUserInfo.Email != "" {
-		// 脱敏邮箱：只显示前3位和@domain部分
-		targetUserInfo.Email = utils.MaskEmail(targetUserInfo.Email)
-	}
-	if !isFriend && targetUserInfo.Telephone != "" {
-		// 脱敏手机号：只显示前3位和后4位
-		targetUserInfo.Telephone = utils.MaskPhone(targetUserInfo.Telephone)
-	}
-
-	// 5. 返回用户信息
+	// 2. 返回用户信息（脱敏由Gateway层负责）
 	return &pb.GetOtherProfileResponse{
 		UserInfo: converter.ModelToProtoUserInfo(targetUserInfo),
-		IsFriend: isFriend,
 	}, nil
 }
 

@@ -3,7 +3,11 @@ package repository
 import (
 	"ChatServer/model"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -22,14 +26,58 @@ func NewUserRepository(db *gorm.DB, redisClient *redis.Client) IUserRepository {
 
 // GetByUUID 根据UUID查询用户信息
 func (r *userRepositoryImpl) GetByUUID(ctx context.Context, uuid string) (*model.UserInfo, error) {
-	var user model.UserInfo
-	err := r.db.WithContext(ctx).Where("uuid = ? AND deleted_at IS NULL", uuid).First(&user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	// ==================== 1. 先从 Redis 缓存中查询 ====================
+	cacheKey := fmt.Sprintf("user:info:%s", uuid)
+	cachedData, err := r.redisClient.Get(ctx, cacheKey).Result()
+	if err == nil {
+		// 缓存命中，反序列化返回
+		// 先判空
+		if cachedData == "{}" {
 			return nil, nil
 		}
-		return nil, WrapDBError(err)
+		var user model.UserInfo
+		if err := json.Unmarshal([]byte(cachedData), &user); err == nil {
+			return &user, nil
+		}
 	}
+	if err != nil && err != redis.Nil {
+		LogRedisError(ctx, err)// 记录日志 降级处理
+	}
+
+	// ==================== 2. 缓存未命中，查询 MySQL ====================
+	var user model.UserInfo
+	err = r.db.WithContext(ctx).Where("uuid = ? AND deleted_at IS NULL", uuid).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 存一份空到redis 5min过期
+			randomDuration := getRandomExpireTime(5*time.Minute)
+			err = r.redisClient.Set(ctx, cacheKey, "{}", randomDuration).Err()
+			if err != nil {
+				LogRedisError(ctx, err)// 记录日志 降级处理
+			}
+			return nil, nil
+		}else{
+			return nil, WrapDBError(err)
+		}
+	}
+
+	// ==================== 3. 存入 Redis 缓存 ====================
+	// 序列化用户信息
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		// 序列化失败，不影响主流程，只返回数据库数据
+		return &user, nil
+	}
+
+	// 存入缓存，设置过期时间为 1 小时（+-5min缓冲）
+	// 随机时间防止缓存雪崩
+	randomDuration := time.Duration(rand.Intn(10)) * time.Minute
+	err = r.redisClient.Set(ctx, cacheKey, userJSON, 1*time.Hour-randomDuration).Err()
+	if err != nil {
+		// 存入缓存失败，不影响主流程，只返回数据库数据
+		return &user, nil
+	}
+
 	return &user, nil
 }
 

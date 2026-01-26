@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"ChatServer/pkg/logger"
+	"context"
 	"errors"
 	"fmt"
 
@@ -74,4 +76,9 @@ func WrapDBError(err error) error {
 // WrapRedisError 包装 Redis 错误
 func WrapRedisError(err error) error {
 	return wrapError(err, redisErrorRules, ErrRedis)
+}
+
+// 日志记录redis错误
+func LogRedisError(ctx context.Context, err error) {
+	logger.Error(ctx, "Redis 操作错误", logger.ErrorField("error", err))
 }

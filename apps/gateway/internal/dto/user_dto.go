@@ -224,13 +224,13 @@ func ConvertGetProfileResponseFromProto(pb *userpb.GetProfileResponse) *GetProfi
 }
 
 // ConvertGetOtherProfileResponseFromProto 将 Protobuf 获取他人信息响应转换为 DTO
-func ConvertGetOtherProfileResponseFromProto(pb *userpb.GetOtherProfileResponse) *GetOtherProfileResponse {
+func ConvertGetOtherProfileResponseFromProto(pb *userpb.GetOtherProfileResponse, isFriend bool) *GetOtherProfileResponse {
 	if pb == nil {
 		return nil
 	}
 	return &GetOtherProfileResponse{
 		UserInfo: ConvertUserInfoFromProto(pb.UserInfo),
-		IsFriend: pb.IsFriend,
+		IsFriend: isFriend,
 	}
 }
 

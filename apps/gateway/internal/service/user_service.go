@@ -74,31 +74,93 @@ func (s *UserServiceImpl) GetProfile(ctx context.Context) (*dto.GetProfileRespon
 func (s *UserServiceImpl) GetOtherProfile(ctx context.Context, req *dto.GetOtherProfileRequest) (*dto.GetOtherProfileResponse, error) {
 	startTime := time.Now()
 
-	// 1. 转换 DTO 为 Protobuf 请求
+	// 1. 从context中获取当前用户UUID
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return nil, errors.New(strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 转换 DTO 为 Protobuf 请求
 	grpcReq := dto.ConvertToProtoGetOtherProfileRequest(req)
 
-	// 2. 调用用户服务获取他人信息(gRPC)
-	grpcResp, err := s.userClient.GetOtherProfile(ctx, grpcReq)
-	if err != nil {
+	// 3. 并发调用用户服务和好友服务获取信息
+	// 使用goroutine并发调用两个服务
+	type userResult struct {
+		resp *userpb.GetOtherProfileResponse
+		err  error
+	}
+	type friendResult struct {
+		resp *userpb.CheckIsFriendResponse
+		err  error
+	}
+
+	userChan := make(chan userResult, 1)
+	friendChan := make(chan friendResult, 1)
+
+	// 并发调用用户服务
+	go func() {
+		grpcResp, err := s.userClient.GetOtherProfile(ctx, grpcReq)
+		userChan <- userResult{resp: grpcResp, err: err}
+	}()
+
+	// 并发调用好友服务判断是否为好友
+	go func() {
+		friendReq := &userpb.CheckIsFriendRequest{
+			UserUuid: currentUserUUID,
+			PeerUuid: req.UserUUID,
+		}
+		friendResp, err := s.userClient.CheckIsFriend(ctx, friendReq)
+		friendChan <- friendResult{resp: friendResp, err: err}
+	}()
+
+	// 等待两个服务调用完成
+	userRes := <-userChan
+	friendRes := <-friendChan
+
+	// 4. 检查用户服务调用结果
+	if userRes.err != nil {
 		// gRPC 调用失败，提取业务错误码
-		code := utils.ExtractErrorCode(err)
+		code := utils.ExtractErrorCode(userRes.err)
 		// 记录错误日志
 		logger.Error(ctx, "调用用户服务 gRPC 失败",
-			logger.ErrorField("error", err),
+			logger.ErrorField("error", userRes.err),
 			logger.Int("business_code", code),
 			logger.String("business_message", consts.GetMessage(code)),
 			logger.Duration("duration", time.Since(startTime)),
 		)
 		// 返回业务错误（作为 Go error 返回，由 Handler 层处理）
-		return nil, err
+		return nil, userRes.err
 	}
 
-	// 3. gRPC 调用成功，检查响应数据
-	if grpcResp.UserInfo == nil {
+	// 5. gRPC 调用成功，检查响应数据
+	if userRes.resp.UserInfo == nil {
 		// 成功返回但 UserInfo 为空，属于非预期的异常情况
 		logger.Error(ctx, "gRPC 成功响应但用户信息为空")
 		return nil, errors.New(strconv.Itoa(consts.CodeInternalError))
 	}
 
-	return dto.ConvertGetOtherProfileResponseFromProto(grpcResp), nil
+	// 6. 检查好友服务调用结果（非关键错误，只记录日志）
+	isFriend := false
+	if friendRes.err != nil {
+		logger.Warn(ctx, "调用好友服务失败",
+			logger.ErrorField("error", friendRes.err),
+		)
+	} else if friendRes.resp != nil {
+		isFriend = friendRes.resp.IsFriend
+	}
+
+	// 7. 非好友时脱敏邮箱和手机号
+	userInfo := userRes.resp.UserInfo
+	if !isFriend && userInfo.Email != "" {
+		// 脱敏邮箱：只显示前3位和@domain部分
+		userInfo.Email = utils.MaskEmail(userInfo.Email)
+	}
+	if !isFriend && userInfo.Telephone != "" {
+		// 脱敏手机号：只显示前3位和后4位
+		userInfo.Telephone = utils.MaskTelephone(userInfo.Telephone)
+	}
+
+	// 8. 返回用户信息
+	return dto.ConvertGetOtherProfileResponseFromProto(userRes.resp, isFriend), nil
 }

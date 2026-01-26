@@ -66,16 +66,16 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 		// 需要认证的接口
 		auth := api.Group("/auth")
 		auth.Use(middleware.JWTAuthMiddleware()) // 应用 JWT 认证中间件  测试环境下不启用
-		// 认证相关接口
-		auth.POST("/logout", authHandler.Logout)
-
-		// 用户相关接口（需要认证）
-		user := api.Group("/user")
-		user.Use(middleware.JWTAuthMiddleware()) // 应用 JWT 认证中间件  测试环境下不启用
 		{
-			user.GET("/profile", userHandler.GetProfile)
-			user.GET("/profile/:userUuid", userHandler.GetOtherProfile)
+			//转发给user服务的接口
+			user := auth.Group("/user")
+			{
+				user.GET("/profile", userHandler.GetProfile)
+				user.GET("/profile/:userUuid", userHandler.GetOtherProfile)
+				user.POST("/logout", authHandler.Logout)
+			}
 		}
+
 	}
 
 	return r
