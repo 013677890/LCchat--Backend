@@ -166,3 +166,26 @@ func (r *userRepositoryImpl) ExistsByPhone(ctx context.Context, telephone string
 func (r *userRepositoryImpl) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return false, nil // TODO: 实现检查邮箱是否已存在
 }
+
+// UpdatePassword 更新密码
+func (r *userRepositoryImpl) UpdatePassword(ctx context.Context, userUUID, password string) error {
+	// 更新密码到数据库
+	err := r.db.WithContext(ctx).
+		Model(&model.UserInfo{}).
+		Where("uuid = ? AND deleted_at IS NULL", userUUID).
+		Update("password", password).
+		Error
+	if err != nil {
+		return WrapDBError(err)
+	}
+
+	// 更新成功后，删除Redis缓存
+	cacheKey := fmt.Sprintf("user:info:%s", userUUID)
+	err = r.redisClient.Del(ctx, cacheKey).Err()
+	if err != nil {
+		// 缓存删除失败不影响主流程，记录日志即可
+		LogRedisError(ctx, err)
+	}
+
+	return nil
+}

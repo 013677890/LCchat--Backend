@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -191,8 +192,94 @@ func (s *userServiceImpl) UploadAvatar(ctx context.Context, req *pb.UploadAvatar
 }
 
 // ChangePassword 修改密码
+// 业务流程：
+//  1. 从context中获取用户UUID
+//  2. 查询用户信息
+//  3. 验证旧密码是否正确
+//  4. 验证新密码不能与旧密码相同
+//  5. 生成新密码哈希
+//  6. 更新密码
+//  7. 踢出其他所有设备的登录态
+//
+// 错误码映射：
+//   - codes.NotFound: 用户不存在
+//   - codes.Unauthenticated: 旧密码错误
+//   - codes.FailedPrecondition: 新密码不能与旧密码相同
+//   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) ChangePassword(ctx context.Context, req *pb.ChangePasswordRequest) error {
-	return status.Error(codes.Unimplemented, "修改密码功能暂未实现")
+	// 1. 从context中获取用户UUID
+	userUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || userUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 查询用户信息
+	userInfo, err := s.userRepo.GetByUUID(ctx, userUUID)
+	if err != nil {
+		logger.Error(ctx, "查询用户信息失败",
+			logger.String("user_uuid", userUUID),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	if userInfo == nil {
+		logger.Warn(ctx, "用户不存在",
+			logger.String("user_uuid", userUUID),
+		)
+		return status.Error(codes.NotFound, strconv.Itoa(consts.CodeUserNotFound))
+	}
+
+	// 3. 校验旧密码是否正确
+	err = bcrypt.CompareHashAndPassword([]byte(userInfo.Password), []byte(req.OldPassword))
+	if err != nil {
+		logger.Warn(ctx, "旧密码错误",
+			logger.String("user_uuid", userUUID),
+		)
+		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodePasswordError))
+	}
+
+	// 4. 校验新密码是否与旧密码相同
+	err = bcrypt.CompareHashAndPassword([]byte(userInfo.Password), []byte(req.NewPassword))
+	if err == nil {
+		// 密码相同
+		logger.Warn(ctx, "新密码不能与旧密码相同",
+			logger.String("user_uuid", userUUID),
+		)
+		return status.Error(codes.FailedPrecondition, strconv.Itoa(consts.CodePasswordSameAsOld))
+	}
+
+	// 5. 生成新密码哈希
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		logger.Error(ctx, "生成密码哈希失败",
+			logger.String("user_uuid", userUUID),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 6. 更新密码
+	err = s.userRepo.UpdatePassword(ctx, userUUID, string(hashedPassword))
+	if err != nil {
+		logger.Error(ctx, "更新密码失败",
+			logger.String("user_uuid", userUUID),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 7. 踢出其他所有设备的登录态（删除所有设备的token）
+	// 注意：当前设备保持登录态，其他设备被踢出
+	// 这里需要在repository中实现踢出其他设备的方法，暂时跳过
+	// TODO: 实现踢出其他设备登录态
+
+	logger.Info(ctx, "密码修改成功",
+		logger.String("user_uuid", userUUID),
+	)
+
+	return nil
 }
 
 // ChangeEmail 绑定/换绑邮箱

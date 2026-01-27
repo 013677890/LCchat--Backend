@@ -87,6 +87,9 @@ type IUserRepository interface {
 
 	// ExistsByEmail 检查邮箱是否已存在
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+
+	// UpdatePassword 更新密码
+	UpdatePassword(ctx context.Context, userUUID, password string) error
 }
 
 // ==================== 好友关系 Repository ====================
