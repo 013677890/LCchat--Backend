@@ -477,14 +477,14 @@ func (s *userServiceImpl) GetQRCode(ctx context.Context, req *pb.GetQRCodeReques
 	if err == nil {
 		logger.Info(ctx, "用户已有二维码 token",
 			logger.String("user_uuid", userUUID),
-			logger.String("qrcode_url", fmt.Sprintf("https://LCchat.top/api/v1/auth/user/parse-qrcode/%s", token)),
+			logger.String("qrcode_url", fmt.Sprintf("https://www.LCchat.top/q/%s", token)),
 		)
 		return &pb.GetQRCodeResponse{
-			Qrcode:   fmt.Sprintf("https://LCchat.top/api/v1/auth/user/parse-qrcode/%s", token),
+			Qrcode:   fmt.Sprintf("https://www.LCchat.top/q/%s", token),
 			ExpireAt: expireTime.Format(time.RFC3339),
 		}, nil
-	}else if errors.Is(err, repository.ErrRedisNil) {
-	}else {
+	} else if errors.Is(err, repository.ErrRedisNil) {
+	} else {
 		logger.Error(ctx, "获取用户二维码 token失败",
 			logger.String("user_uuid", userUUID),
 			logger.ErrorField("error", err),
@@ -507,7 +507,7 @@ func (s *userServiceImpl) GetQRCode(ctx context.Context, req *pb.GetQRCodeReques
 	}
 
 	// 4. 构造二维码 URL
-	qrcodeURL := fmt.Sprintf("https://LCchat.top/api/v1/auth/user/parse-qrcode/%s", token)
+	qrcodeURL := fmt.Sprintf("https://www.LCchat.top/q/%s", token)
 
 	// 5. 计算过期时间（当前时间 + 48小时）
 	expireAt := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
@@ -523,11 +523,6 @@ func (s *userServiceImpl) GetQRCode(ctx context.Context, req *pb.GetQRCodeReques
 		Qrcode:   qrcodeURL,
 		ExpireAt: expireAt,
 	}, nil
-}
-
-// ParseQRCode 解析二维码
-func (s *userServiceImpl) ParseQRCode(ctx context.Context, req *pb.ParseQRCodeRequest) (*pb.ParseQRCodeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "解析二维码功能暂未实现")
 }
 
 // DeleteAccount 注销账号
@@ -588,5 +583,50 @@ func (s *userServiceImpl) BatchGetProfile(ctx context.Context, req *pb.BatchGetP
 
 	return &pb.BatchGetProfileResponse{
 		Users: simpleUsers,
+	}, nil
+}
+
+// ParseQRCode 解析二维码
+// 业务流程：
+//  1. 验证 token 是否为空
+//  2. 从 Redis 中根据 token 获取用户 UUID
+//  3. 验证用户是否存在
+//  4. 返回用户 UUID
+//
+// 错误码映射：
+//   - codes.InvalidArgument: 二维码格式错误（token 为空）
+//   - codes.NotFound: 二维码已过期或用户不存在
+//   - codes.Internal: 系统内部错误
+func (s *userServiceImpl) ParseQRCode(ctx context.Context, req *pb.ParseQRCodeRequest) (*pb.ParseQRCodeResponse, error) {
+	// 1. 验证 token 是否为空
+	if req.Token == "" {
+		logger.Warn(ctx, "二维码 token 为空")
+		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeQRCodeFormatError))
+	}
+
+	// 2. 从 Redis 中根据 token 获取用户 UUID
+	userUUID, err := s.userRepo.GetUUIDByQRCodeToken(ctx, req.Token)
+	if err != nil {
+		if errors.Is(err, repository.ErrRedisNil) {
+			// Redis 中不存在该 token，说明二维码已过期或无效
+			logger.Warn(ctx, "二维码已过期",
+				logger.String("token", req.Token),
+			)
+			return nil, status.Error(codes.NotFound, strconv.Itoa(consts.CodeQRCodeExpired))
+		}
+		logger.Error(ctx, "从 Redis 获取二维码 token 失败",
+			logger.String("token", req.Token),
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	logger.Info(ctx, "解析二维码成功",
+		logger.String("user_uuid", userUUID),
+	)
+
+	// 4. 返回用户 UUID
+	return &pb.ParseQRCodeResponse{
+		UserUuid: userUUID,
 	}, nil
 }

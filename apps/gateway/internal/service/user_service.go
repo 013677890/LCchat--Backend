@@ -29,6 +29,8 @@ type UserService interface {
 	ChangeEmail(ctx context.Context, req *dto.ChangeEmailRequest) (*dto.ChangeEmailResponse, error)
 	// GetQRCode 获取用户二维码
 	GetQRCode(ctx context.Context) (*dto.GetQRCodeResponse, error)
+	// ParseQRCode 解析二维码
+	ParseQRCode(ctx context.Context, req *dto.ParseQRCodeRequest) (*dto.ParseQRCodeResponse, error)
 	// BatchGetProfile 批量获取用户信息
 	BatchGetProfile(ctx context.Context, req *dto.BatchGetProfileRequest) (*dto.BatchGetProfileResponse, error)
 }
@@ -368,4 +370,34 @@ func (s *UserServiceImpl) GetQRCode(ctx context.Context) (*dto.GetQRCodeResponse
 	}
 
 	return dto.ConvertGetQRCodeResponseFromProto(grpcResp), nil
+}
+
+// ParseQRCode 解析二维码
+// ctx: 请求上下文
+// req: 解析二维码请求
+// 返回: 解析结果
+func (s *UserServiceImpl) ParseQRCode(ctx context.Context, req *dto.ParseQRCodeRequest) (*dto.ParseQRCodeResponse, error) {
+	startTime := time.Now()
+
+	// 1. 转换 DTO 为 Protobuf 请求
+	grpcReq := dto.ConvertToProtoParseQRCodeRequest(req)
+
+	// 2. 调用用户服务解析二维码(gRPC)
+	grpcResp, err := s.userClient.ParseQRCode(ctx, grpcReq)
+	if err != nil {
+		// gRPC 调用失败，提取业务错误码
+		code := utils.ExtractErrorCode(err)
+		// 记录错误日志
+		logger.Error(ctx, "调用用户服务 gRPC 失败",
+			logger.String("token", req.Token),
+			logger.ErrorField("error", err),
+			logger.Int("business_code", code),
+			logger.String("business_message", consts.GetMessage(code)),
+			logger.Duration("duration", time.Since(startTime)),
+		)
+		// 返回业务错误（作为 Go error 返回，由 Handler 层处理）
+		return nil, err
+	}
+
+	return dto.ConvertParseQRCodeResponseFromProto(grpcResp), nil
 }

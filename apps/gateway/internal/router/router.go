@@ -69,6 +69,7 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 				user.POST("/reset-password", authHandler.ResetPassword)
 				user.POST("/refresh-token", authHandler.RefreshToken)
 				user.POST("/verify-code", authHandler.VerifyCode)
+				user.POST("/parse-qrcode", userHandler.ParseQRCode)
 			}
 		}
 

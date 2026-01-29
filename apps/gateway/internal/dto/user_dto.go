@@ -84,20 +84,18 @@ type GetQRCodeRequest struct{}
 
 // GetQRCodeResponse 获取用户二维码响应 DTO
 type GetQRCodeResponse struct {
-	QRCode      string `json:"qrCode"`      // 二维码内容
-	QRCodeImage string `json:"qrCodeImage"` // 二维码图片(base64)
-	ExpireAt    string `json:"expireAt"`    // 过期时间
+	QRCode   string `json:"qrCode"`   // 二维码内容
+	ExpireAt string `json:"expireAt"` // 过期时间
 }
 
 // ParseQRCodeRequest 解析二维码请求 DTO
 type ParseQRCodeRequest struct {
-	QRCode string `json:"qrCode" binding:"required"` // 二维码内容
+	Token string `json:"token" binding:"required"` // 二维码token
 }
 
 // ParseQRCodeResponse 解析二维码响应 DTO
 type ParseQRCodeResponse struct {
-	UserInfo *UserInfo `json:"userInfo"` // 用户信息
-	IsFriend bool      `json:"isFriend"` // 是否好友
+	UserUUID string `json:"uuid"` // 用户UUID
 }
 
 // DeleteAccountRequest 注销账号请求 DTO
@@ -186,7 +184,7 @@ func ConvertToProtoParseQRCodeRequest(dto *ParseQRCodeRequest) *userpb.ParseQRCo
 		return nil
 	}
 	return &userpb.ParseQRCodeRequest{
-		Qrcode: dto.QRCode,
+		Token: dto.Token,
 	}
 }
 
@@ -288,8 +286,8 @@ func ConvertGetQRCodeResponseFromProto(pb *userpb.GetQRCodeResponse) *GetQRCodeR
 		return nil
 	}
 	return &GetQRCodeResponse{
-		QRCode:      pb.Qrcode,
-		ExpireAt:    pb.ExpireAt,
+		QRCode:   pb.Qrcode,
+		ExpireAt: pb.ExpireAt,
 	}
 }
 
@@ -299,8 +297,7 @@ func ConvertParseQRCodeResponseFromProto(pb *userpb.ParseQRCodeResponse) *ParseQ
 		return nil
 	}
 	return &ParseQRCodeResponse{
-		UserInfo: ConvertUserInfoFromProto(pb.UserInfo),
-		IsFriend: pb.IsFriend,
+		UserUUID: pb.UserUuid,
 	}
 }
 

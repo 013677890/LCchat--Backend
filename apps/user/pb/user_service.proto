@@ -147,13 +147,12 @@ message GetQRCodeResponse {
 
 // ParseQRCodeRequest 解析二维码请求
 message ParseQRCodeRequest {
-	string qrcode = 1 [(validate.rules).string.min_len = 1];
+	string token = 1 [(validate.rules).string.min_len = 1];
 }
 
 // ParseQRCodeResponse 解析二维码响应
 message ParseQRCodeResponse {
-	UserInfo user_info = 1;
-	bool is_friend = 2;
+	string user_uuid = 1;
 }
 
 // ==================== 注销账号 ====================
