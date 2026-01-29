@@ -142,8 +142,7 @@ message GetQRCodeRequest {}
 // GetQRCodeResponse 获取二维码响应
 message GetQRCodeResponse {
 	string qrcode = 1;
-	string qrcode_image = 2;
-	string expire_at = 3;
+	string expire_at = 2;
 }
 
 // ParseQRCodeRequest 解析二维码请求
