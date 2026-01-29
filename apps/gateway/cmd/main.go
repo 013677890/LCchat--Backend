@@ -8,6 +8,7 @@ import (
 	"ChatServer/apps/gateway/internal/service"
 	"ChatServer/config"
 	"ChatServer/pkg/logger"
+	pkgminio "ChatServer/pkg/minio"
 	pkgredis "ChatServer/pkg/redis"
 	"context"
 	"fmt"
@@ -60,7 +61,25 @@ func main() {
 
 	logger.Info(ctx, "Gateway 服务初始化中...")
 
-	// 3. 初始化 Redis IP 限流器
+	// 3. 初始化 MinIO 对象存储
+	minioCfg := config.DefaultMinIOConfig()
+	minioClient, err := pkgminio.Build(minioCfg)
+	if err != nil {
+		logger.Error(ctx, "初始化 MinIO 失败",
+			logger.ErrorField("error", err),
+		)
+		// MinIO 初始化失败不阻塞启动，但文件上传功能将不可用
+		minioClient = nil
+	} else {
+		pkgminio.ReplaceGlobal(minioClient)
+		logger.Info(ctx, "MinIO 初始化成功",
+			logger.String("endpoint", minioCfg.Endpoint),
+			logger.String("bucket", minioCfg.BucketName),
+			logger.Bool("use_ssl", minioCfg.UseSSL),
+		)
+	}
+
+	// 4. 初始化 Redis IP 限流器
 	// 参数说明：
 	//   - rate: 每秒产生的令牌数 (10.0 表示每秒10个令牌)
 	//   - burst: 令牌桶容量 (20 表示桶最多20个令牌)
@@ -73,15 +92,15 @@ func main() {
 		logger.String("blacklist_key", "gateway:blacklist:ips"),
 	)
 
-	// 3. 初始化 gRPC 客户端（依赖注入）
+	// 5. 初始化 gRPC 客户端（依赖注入）
 	// TODO: 从配置文件读取user服务地址
 	userServiceAddr := "localhost:9090"
 
-	// 3.1 创建熔断器
+	// 5.1 创建熔断器
 	userServiceBreaker := pb.CreateCircuitBreaker("user-service")
 	logger.Info(ctx, "熔断器创建成功", logger.String("name", "user-service"))
 
-	// 3.2 创建 gRPC 连接
+	// 5.2 创建 gRPC 连接
 	userServiceConn, err := pb.CreateUserServiceConnection(userServiceAddr, userServiceBreaker)
 	if err != nil {
 		logger.Error(ctx, "创建用户服务 gRPC 连接失败", logger.ErrorField("error", err))
@@ -94,31 +113,31 @@ func main() {
 	}()
 	logger.Info(ctx, "用户服务 gRPC 连接创建成功", logger.String("address", userServiceAddr))
 
-	// 3.3 创建 gRPC 客户端
+	// 5.3 创建 gRPC 客户端
 	userClient := pb.NewUserServiceClient(userServiceConn, userServiceConn, userServiceConn, userServiceConn, userServiceConn, userServiceBreaker)
 	logger.Info(ctx, "用户服务 gRPC 客户端初始化完成", logger.String("address", userServiceAddr))
 
-	// 4. 初始化 Service 层（依赖注入）
+	// 6. 初始化 Service 层（依赖注入）
 	authService := service.NewAuthService(userClient)
 	logger.Info(ctx, "认证服务初始化完成")
 
 	userService := service.NewUserService(userClient)
 	logger.Info(ctx, "用户信息服务初始化完成")
 
-	// 5. 初始化 Handler 层（依赖注入）
+	// 7. 初始化 Handler 层（依赖注入）
 	authHandler := v1.NewAuthHandler(authService)
 	logger.Info(ctx, "认证处理器初始化完成")
 
 	userHandler := v1.NewUserHandler(userService)
 	logger.Info(ctx, "用户信息处理器初始化完成")
 
-	// 6. 初始化路由（依赖注入）
+	// 8. 初始化路由（依赖注入）
 	// Gin 模式设置: ReleaseMode/DebugMode/TestMode
 	gin.SetMode(gin.ReleaseMode)
 	r := router.InitRouter(authHandler, userHandler)
 	logger.Info(ctx, "路由初始化完成")
 
-	// 7. 配置服务器
+	// 9. 配置服务器
 	port := 8080 // TODO: 从配置文件读取
 	addr := "127.0.0.1:" + fmt.Sprintf("%d", port)
 
@@ -130,7 +149,7 @@ func main() {
 		MaxHeaderBytes: 1 << 20,          // 最大请求头 1MB
 	}
 
-	// 8. 启动服务器（在 goroutine 中）
+	// 10. 启动服务器（在 goroutine 中）
 	go func() {
 		logger.Info(ctx, "Gateway 服务器启动中",
 			logger.String("address", addr),
@@ -145,7 +164,7 @@ func main() {
 
 	logger.Info(ctx, "Gateway 服务器启动成功，按 Ctrl+C 关闭")
 
-	// 9. 优雅停机
+	// 11. 优雅停机
 	quit := make(chan os.Signal, 1)
 	// 监听中断信号：Ctrl+C (SIGINT) 和 kill 命令 (SIGTERM)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -156,7 +175,7 @@ func main() {
 		logger.String("signal", sig.String()),
 	)
 
-	// 10. 设置超时时间，等待正在处理的请求完成
+	// 12. 设置超时时间，等待正在处理的请求完成
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

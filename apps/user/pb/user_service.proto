@@ -89,7 +89,7 @@ message UpdateProfileResponse {
 
 // UploadAvatarRequest 上传头像请求
 message UploadAvatarRequest {
-	bytes avatar_data = 1 [(validate.rules).bytes = {min_len: 1, max_len: 2097152}]; // 最大2MB
+	string avatar_url = 1 [(validate.rules).string.min_len = 1];
 }
 
 // UploadAvatarResponse 上传头像响应

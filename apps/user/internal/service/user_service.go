@@ -191,8 +191,52 @@ func (s *userServiceImpl) UpdateProfile(ctx context.Context, req *pb.UpdateProfi
 }
 
 // UploadAvatar 上传头像
+// UploadAvatar 上传头像
+// 业务流程：
+//  1. 从context中获取用户UUID
+//  2. 验证头像URL不为空
+//  3. 更新数据库中的头像字段
+//  4. 返回新的头像URL
+//
+// 错误码映射：
+//   - codes.InvalidArgument: 头像URL为空
+//   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) UploadAvatar(ctx context.Context, req *pb.UploadAvatarRequest) (*pb.UploadAvatarResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "上传头像功能暂未实现")
+	// 1. 从context中获取用户UUID
+	userUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || userUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 验证头像URL不为空
+	if req.AvatarUrl == "" {
+		logger.Warn(ctx, "头像URL为空",
+			logger.String("user_uuid", userUUID),
+		)
+		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeParamError))
+	}
+
+	// 3. 更新数据库中的头像字段
+	err := s.userRepo.UpdateAvatar(ctx, userUUID, req.AvatarUrl)
+	if err != nil {
+		logger.Error(ctx, "更新头像失败",
+			logger.String("user_uuid", userUUID),
+			logger.String("avatar_url", req.AvatarUrl),
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	logger.Info(ctx, "更新头像成功",
+		logger.String("user_uuid", userUUID),
+		logger.String("avatar_url", req.AvatarUrl),
+	)
+
+	// 4. 返回新的头像URL
+	return &pb.UploadAvatarResponse{
+		AvatarUrl: req.AvatarUrl,
+	}, nil
 }
 
 // ChangePassword 修改密码

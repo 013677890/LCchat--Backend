@@ -21,6 +21,8 @@ type UserService interface {
 	GetOtherProfile(ctx context.Context, req *dto.GetOtherProfileRequest) (*dto.GetOtherProfileResponse, error)
 	// UpdateProfile 更新基本信息
 	UpdateProfile(ctx context.Context, req *dto.UpdateProfileRequest) (*dto.UpdateProfileResponse, error)
+	// UploadAvatar 上传头像
+	UploadAvatar(ctx context.Context, avatarURL string) (string, error)
 	// ChangePassword 修改密码
 	ChangePassword(ctx context.Context, req *dto.ChangePasswordRequest) error
 	// ChangeEmail 绑定/换绑邮箱
@@ -263,4 +265,41 @@ func (s *UserServiceImpl) ChangeEmail(ctx context.Context, req *dto.ChangeEmailR
 	}
 
 	return dto.ConvertChangeEmailResponseFromProto(grpcResp), nil
+}
+
+// UploadAvatar 上传头像
+// ctx: 请求上下文
+// avatarURL: 头像URL（已上传到MinIO）
+// 返回: 头像URL
+func (s *UserServiceImpl) UploadAvatar(ctx context.Context, avatarURL string) (string, error) {
+	startTime := time.Now()
+
+	// 1. 构造 gRPC 请求
+	grpcReq := &userpb.UploadAvatarRequest{
+		AvatarUrl: avatarURL,
+	}
+
+	// 2. 调用用户服务更新头像(gRPC)
+	grpcResp, err := s.userClient.UploadAvatar(ctx, grpcReq)
+	if err != nil {
+		// gRPC 调用失败，提取业务错误码
+		code := utils.ExtractErrorCode(err)
+		// 记录错误日志
+		logger.Error(ctx, "调用用户服务上传头像 gRPC 失败",
+			logger.String("avatar_url", avatarURL),
+			logger.ErrorField("error", err),
+			logger.Int("business_code", code),
+			logger.String("business_message", consts.GetMessage(code)),
+			logger.Duration("duration", time.Since(startTime)),
+		)
+		// 返回业务错误（作为 Go error 返回，由 Handler 层处理）
+		return "", err
+	}
+
+	logger.Info(ctx, "上传头像成功",
+		logger.String("avatar_url", grpcResp.AvatarUrl),
+		logger.Duration("duration", time.Since(startTime)),
+	)
+
+	return grpcResp.AvatarUrl, nil
 }

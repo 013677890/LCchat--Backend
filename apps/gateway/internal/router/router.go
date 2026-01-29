@@ -75,7 +75,7 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 		// 需要认证的接口
 		auth := api.Group("/auth")
 		auth.Use(middleware.JWTAuthMiddleware()) // JWT 认证中间件（必须在前）
-		
+
 		// ==================== 用户级别限流中间件 ====================
 		// 只对已认证的用户进行限流
 		// 参数说明：
@@ -88,7 +88,8 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 				user.GET("/profile", userHandler.GetProfile)
 				user.PUT("/profile", userHandler.UpdateProfile)
 				user.GET("/profile/:userUuid", userHandler.GetOtherProfile)
-				
+				user.POST("/avatar", userHandler.UploadAvatar)
+
 				// 敏感操作使用更严格的限流
 				user.POST("/change-password",
 					middleware.UserRateLimitMiddlewareWithConfig(2.0, 5),
@@ -96,7 +97,7 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 				user.POST("/change-email",
 					middleware.UserRateLimitMiddlewareWithConfig(2.0, 5),
 					userHandler.ChangeEmail)
-				
+
 				user.POST("/logout", authHandler.Logout)
 			}
 		}

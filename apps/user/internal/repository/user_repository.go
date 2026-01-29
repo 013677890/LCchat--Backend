@@ -106,7 +106,27 @@ func (r *userRepositoryImpl) Update(ctx context.Context, user *model.UserInfo) (
 
 // UpdateAvatar 更新用户头像
 func (r *userRepositoryImpl) UpdateAvatar(ctx context.Context, userUUID, avatar string) error {
-	return nil // TODO: 实现更新用户头像
+	// 更新头像到数据库
+	err := r.db.WithContext(ctx).
+		Model(&model.UserInfo{}).
+		Where("uuid = ? AND deleted_at IS NULL", userUUID).
+		Update("avatar", avatar).
+		Error
+	if err != nil {
+		return WrapDBError(err)
+	}
+
+	// 更新成功后，删除 Redis 缓存
+	cacheKey := fmt.Sprintf("user:info:%s", userUUID)
+	err = r.redisClient.Del(ctx, cacheKey).Err()
+	if err != nil {
+		// 发送到重试队列
+		task := mq.BuildDelTask(cacheKey).
+			WithSource("UserRepository.UpdateAvatar")
+		LogAndRetryRedisError(ctx, task, err)
+	}
+
+	return nil
 }
 
 // UpdateBasicInfo 更新基本信息
