@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"ChatServer/apps/user/mq"
 	"ChatServer/model"
 	"context"
 	"fmt"
@@ -131,15 +130,7 @@ func (r *friendRepositoryImpl) IsFriend(ctx context.Context, userUUID, friendUUI
 
 		// 异步执行写入，不需要等待结果，让接口响应更快
 		if _, err := pipe.Exec(ctx); err != nil {
-			// 发送到重试队列
-			cmds := []mq.RedisCmd{
-				{Command: "del", Args: []interface{}{cacheKey}},
-				{Command: "sadd", Args: append([]interface{}{cacheKey}, friendUUIDs...)},
-				{Command: "expire", Args: []interface{}{cacheKey, int(getRandomExpireTime(24 * time.Hour).Seconds())}},
-			}
-			task := mq.BuildPipelineTask(cmds).
-				WithSource("FriendRepository.IsFriend.RebuildCache")
-			LogAndRetryRedisError(ctx, task, err)
+			LogRedisError(ctx, err)
 		}
 
 		return isFriendFound, nil
@@ -147,15 +138,7 @@ func (r *friendRepositoryImpl) IsFriend(ctx context.Context, userUUID, friendUUI
 
 	// 执行空值的 Pipeline
 	if _, err := pipe.Exec(ctx); err != nil {
-		// 发送到重试队列
-		cmds := []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-			{Command: "sadd", Args: []interface{}{cacheKey, "__EMPTY__"}},
-			{Command: "expire", Args: []interface{}{cacheKey, int((5 * time.Minute).Seconds())}},
-		}
-		task := mq.BuildPipelineTask(cmds).
-			WithSource("FriendRepository.IsFriend.RebuildEmptyCache")
-		LogAndRetryRedisError(ctx, task, err)
+		LogRedisError(ctx, err)
 	}
 
 	// 如果是空列表，那肯定不是好友
@@ -244,20 +227,11 @@ func (r *friendRepositoryImpl) BatchCheckIsFriend(ctx context.Context, userUUID 
 	pipe = r.redisClient.Pipeline()
 	pipe.Del(ctx, cacheKey) // 清理旧数据
 
-	var cmds []mq.RedisCmd
-
 	if len(relations) == 0 {
 		// 空列表也用 Set，写入特殊标记
 		pipe.SAdd(ctx, cacheKey, "__EMPTY__")
 		// 空值缓存时间短一点 (5分钟)
 		pipe.Expire(ctx, cacheKey, 5*time.Minute)
-
-		// 构建重试队列命令
-		cmds = []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-			{Command: "sadd", Args: []interface{}{cacheKey, "__EMPTY__"}},
-			{Command: "expire", Args: []interface{}{cacheKey, int((5 * time.Minute).Seconds())}},
-		}
 	} else {
 		// 提取 UUID
 		friendUUIDs := make([]interface{}, len(relations))
@@ -267,20 +241,11 @@ func (r *friendRepositoryImpl) BatchCheckIsFriend(ctx context.Context, userUUID 
 
 		pipe.SAdd(ctx, cacheKey, friendUUIDs...)
 		pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-
-		// 构建重试队列命令
-		cmds = []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-			{Command: "sadd", Args: append([]interface{}{cacheKey}, friendUUIDs...)},
-			{Command: "expire", Args: []interface{}{cacheKey, int(getRandomExpireTime(24 * time.Hour).Seconds())}},
-		}
 	}
 
 	// 异步执行写入，不需要等待结果，让接口响应更快
 	if _, err := pipe.Exec(ctx); err != nil {
-		// 发送到重试队列
-		task := mq.BuildPipelineTask(cmds).WithSource("FriendRepository.BatchCheckIsFriend.RebuildCache")
-		LogAndRetryRedisError(ctx, task, err)
+		LogRedisError(ctx, err)
 	}
 
 	// ==================== 4. 构建返回结果 ====================

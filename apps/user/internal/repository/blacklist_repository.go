@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"ChatServer/apps/user/mq"
 	"ChatServer/model"
 	"context"
 	"errors"
@@ -97,15 +96,7 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 
 			// 执行空值的 Pipeline
 			if _, err := pipe.Exec(ctx); err != nil {
-				// 发送到重试队列
-				cmds := []mq.RedisCmd{
-					{Command: "del", Args: []interface{}{cacheKey}},
-					{Command: "sadd", Args: []interface{}{cacheKey, "__EMPTY__"}},
-					{Command: "expire", Args: []interface{}{cacheKey, int((5 * time.Minute).Seconds())}},
-				}
-				task := mq.BuildPipelineTask(cmds).
-					WithSource("BlacklistRepository.IsBlocked.RebuildEmptyCache")
-				LogAndRetryRedisError(ctx, task, err)
+				LogRedisError(ctx, err)
 			}
 
 			return false, nil
@@ -122,15 +113,7 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 
 	// 异步执行写入，不需要等待结果，让接口响应更快
 	if _, err := pipe.Exec(ctx); err != nil {
-		// 发送到重试队列
-		cmds := []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-			{Command: "sadd", Args: []interface{}{cacheKey, targetUUID}},
-			{Command: "expire", Args: []interface{}{cacheKey, int(getRandomExpireTime(24 * time.Hour).Seconds())}},
-		}
-		task := mq.BuildPipelineTask(cmds).
-			WithSource("BlacklistRepository.IsBlocked.RebuildCache")
-		LogAndRetryRedisError(ctx, task, err)
+		LogRedisError(ctx, err)
 	}
 
 	return true, nil

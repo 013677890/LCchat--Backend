@@ -55,10 +55,7 @@ func (r *userRepositoryImpl) GetByUUID(ctx context.Context, uuid string) (*model
 			randomDuration := getRandomExpireTime(5 * time.Minute)
 			err = r.redisClient.Set(ctx, cacheKey, "{}", randomDuration).Err()
 			if err != nil {
-				// 发送到重试队列
-				task := mq.BuildSetTask(cacheKey, "{}", randomDuration).
-					WithSource("UserRepository.GetByUUID.EmptyCache")
-				LogAndRetryRedisError(ctx, task, err)
+				LogRedisError(ctx, err)
 			}
 			return nil, nil
 		} else {
@@ -80,10 +77,7 @@ func (r *userRepositoryImpl) GetByUUID(ctx context.Context, uuid string) (*model
 	ttl := 1*time.Hour - randomDuration
 	err = r.redisClient.Set(ctx, cacheKey, userJSON, ttl).Err()
 	if err != nil {
-		// 发送到重试队列，不影响主流程
-		task := mq.BuildSetTask(cacheKey, string(userJSON), ttl).
-			WithSource("UserRepository.GetByUUID.SetCache")
-		LogAndRetryRedisError(ctx, task, err)
+		LogRedisError(ctx, err)
 		return &user, nil
 	}
 

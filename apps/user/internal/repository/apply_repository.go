@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"ChatServer/apps/user/mq"
 	"ChatServer/model"
 	"context"
 	"fmt"
@@ -137,18 +136,12 @@ func (r *applyRepositoryImpl) ExistsPendingRequest(ctx context.Context, applican
 	pipe = r.redisClient.Pipeline()
 	pipe.Del(ctx, cacheKey)
 
-	var cmds []mq.RedisCmd
 	if len(applies) == 0 {
 		pipe.ZAdd(ctx, cacheKey, redis.Z{
 			Score:  0,
 			Member: "__EMPTY__",
 		})
 		pipe.Expire(ctx, cacheKey, 5*time.Minute)
-		cmds = []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-			{Command: "zadd", Args: []interface{}{cacheKey, 0, "__EMPTY__"}},
-			{Command: "expire", Args: []interface{}{cacheKey, int((5 * time.Minute).Seconds())}},
-		}
 	} else {
 		zs := make([]redis.Z, 0, len(applies))
 		for _, apply := range applies {
@@ -159,25 +152,10 @@ func (r *applyRepositoryImpl) ExistsPendingRequest(ctx context.Context, applican
 		}
 		pipe.ZAdd(ctx, cacheKey, zs...)
 		pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-
-		cmds = []mq.RedisCmd{
-			{Command: "del", Args: []interface{}{cacheKey}},
-		}
-		for _, apply := range applies {
-			cmds = append(cmds, mq.RedisCmd{
-				Command: "zadd",
-				Args:    []interface{}{cacheKey, apply.CreatedAt.Unix(), apply.ApplicantUuid},
-			})
-		}
-		cmds = append(cmds, mq.RedisCmd{
-			Command: "expire",
-			Args:    []interface{}{cacheKey, int(getRandomExpireTime(24 * time.Hour).Seconds())},
-		})
 	}
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		task := mq.BuildPipelineTask(cmds).WithSource("ApplyRepository.ExistsPendingRequest.RebuildCache")
-		LogAndRetryRedisError(ctx, task, err)
+		LogRedisError(ctx, err)
 	}
 
 	// ==================== 4. 根据回源结果判断 ====================
