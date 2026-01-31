@@ -2,6 +2,7 @@ package repository
 
 import (
 	"ChatServer/apps/user/mq"
+	"ChatServer/pkg/async"
 	"ChatServer/model"
 	"context"
 	"encoding/json"
@@ -53,10 +54,11 @@ func (r *userRepositoryImpl) GetByUUID(ctx context.Context, uuid string) (*model
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 存一份空到redis 5min过期
 			randomDuration := getRandomExpireTime(5 * time.Minute)
-			err = r.redisClient.Set(ctx, cacheKey, "{}", randomDuration).Err()
-			if err != nil {
-				LogRedisError(ctx, err)
-			}
+			async.RunSafe(ctx, func(runCtx context.Context) {
+				if err := r.redisClient.Set(runCtx, cacheKey, "{}", randomDuration).Err(); err != nil {
+					LogRedisError(runCtx, err)
+				}
+			}, 0)
 			return nil, nil
 		} else {
 			return nil, WrapDBError(err)
@@ -75,11 +77,11 @@ func (r *userRepositoryImpl) GetByUUID(ctx context.Context, uuid string) (*model
 	// 随机时间防止缓存雪崩
 	randomDuration := time.Duration(rand.Intn(10)) * time.Minute
 	ttl := 1*time.Hour - randomDuration
-	err = r.redisClient.Set(ctx, cacheKey, userJSON, ttl).Err()
-	if err != nil {
-		LogRedisError(ctx, err)
-		return &user, nil
-	}
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		if err := r.redisClient.Set(runCtx, cacheKey, userJSON, ttl).Err(); err != nil {
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
 
 	return &user, nil
 }

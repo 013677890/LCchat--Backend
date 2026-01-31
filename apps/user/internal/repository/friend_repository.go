@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"ChatServer/pkg/async"
 	"ChatServer/model"
 	"context"
 	"fmt"
@@ -105,14 +106,17 @@ func (r *friendRepositoryImpl) IsFriend(ctx context.Context, userUUID, friendUUI
 	}
 
 	// ==================== 3. 重建缓存 (保持 Set 类型) ====================
-	pipe = r.redisClient.Pipeline()
-	pipe.Del(ctx, cacheKey) // 清理旧数据
-
 	if len(relations) == 0 {
 		// [修复类型冲突] 空列表也用 Set，写入特殊标记
-		pipe.SAdd(ctx, cacheKey, "__EMPTY__")
-		// 空值缓存时间短一点 (5分钟)
-		pipe.Expire(ctx, cacheKey, 5*time.Minute)
+		async.RunSafe(ctx, func(runCtx context.Context) {
+			pipe := r.redisClient.Pipeline()
+			pipe.Del(runCtx, cacheKey)
+			pipe.SAdd(runCtx, cacheKey, "__EMPTY__")
+			pipe.Expire(runCtx, cacheKey, 5*time.Minute)
+			if _, err := pipe.Exec(runCtx); err != nil {
+				LogRedisError(runCtx, err)
+			}
+		}, 0)
 	} else {
 		// 提取 UUID
 		friendUUIDs := make([]interface{}, len(relations))
@@ -125,20 +129,17 @@ func (r *friendRepositoryImpl) IsFriend(ctx context.Context, userUUID, friendUUI
 			}
 		}
 
-		pipe.SAdd(ctx, cacheKey, friendUUIDs...)
-		pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-
-		// 异步执行写入，不需要等待结果，让接口响应更快
-		if _, err := pipe.Exec(ctx); err != nil {
-			LogRedisError(ctx, err)
-		}
+		async.RunSafe(ctx, func(runCtx context.Context) {
+			pipe := r.redisClient.Pipeline()
+			pipe.Del(runCtx, cacheKey)
+			pipe.SAdd(runCtx, cacheKey, friendUUIDs...)
+			pipe.Expire(runCtx, cacheKey, getRandomExpireTime(24*time.Hour))
+			if _, err := pipe.Exec(runCtx); err != nil {
+				LogRedisError(runCtx, err)
+			}
+		}, 0)
 
 		return isFriendFound, nil
-	}
-
-	// 执行空值的 Pipeline
-	if _, err := pipe.Exec(ctx); err != nil {
-		LogRedisError(ctx, err)
 	}
 
 	// 如果是空列表，那肯定不是好友
@@ -224,29 +225,24 @@ func (r *friendRepositoryImpl) BatchCheckIsFriend(ctx context.Context, userUUID 
 
 	// ==================== 3. 统一重建缓存 (保持 Set 类型) ====================
 	// 优化：合并空列表和非空列表的 Pipeline 逻辑，避免代码重复
-	pipe = r.redisClient.Pipeline()
-	pipe.Del(ctx, cacheKey) // 清理旧数据
-
-	if len(relations) == 0 {
-		// 空列表也用 Set，写入特殊标记
-		pipe.SAdd(ctx, cacheKey, "__EMPTY__")
-		// 空值缓存时间短一点 (5分钟)
-		pipe.Expire(ctx, cacheKey, 5*time.Minute)
-	} else {
-		// 提取 UUID
-		friendUUIDs := make([]interface{}, len(relations))
-		for i, relation := range relations {
-			friendUUIDs[i] = relation.PeerUuid
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		pipe := r.redisClient.Pipeline()
+		pipe.Del(runCtx, cacheKey)
+		if len(relations) == 0 {
+			pipe.SAdd(runCtx, cacheKey, "__EMPTY__")
+			pipe.Expire(runCtx, cacheKey, 5*time.Minute)
+		} else {
+			friendUUIDs := make([]interface{}, len(relations))
+			for i, relation := range relations {
+				friendUUIDs[i] = relation.PeerUuid
+			}
+			pipe.SAdd(runCtx, cacheKey, friendUUIDs...)
+			pipe.Expire(runCtx, cacheKey, getRandomExpireTime(24*time.Hour))
 		}
-
-		pipe.SAdd(ctx, cacheKey, friendUUIDs...)
-		pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-	}
-
-	// 异步执行写入，不需要等待结果，让接口响应更快
-	if _, err := pipe.Exec(ctx); err != nil {
-		LogRedisError(ctx, err)
-	}
+		if _, err := pipe.Exec(runCtx); err != nil {
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
 
 	// ==================== 4. 构建返回结果 ====================
 	// 将 DB 查询到的好友集合转为 map

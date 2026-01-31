@@ -6,6 +6,7 @@ import (
 	"ChatServer/apps/gateway/internal/utils"
 	userpb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
+	"ChatServer/pkg/async"
 	"ChatServer/pkg/logger"
 	"context"
 	"errors"
@@ -90,21 +91,25 @@ func (s *UserServiceImpl) GetOtherProfile(ctx context.Context, req *dto.GetOther
 	userChan := make(chan userResult, 1)
 	friendChan := make(chan friendResult, 1)
 
-	// 并发调用用户服务
-	go func() {
+	// 并发调用用户服务（使用协程池）
+	if err := async.Submit(func() {
 		grpcResp, err := s.userClient.GetOtherProfile(ctx, grpcReq)
 		userChan <- userResult{resp: grpcResp, err: err}
-	}()
+	}); err != nil {
+		userChan <- userResult{err: err}
+	}
 
-	// 并发调用好友服务判断是否为好友
-	go func() {
+	// 并发调用好友服务判断是否为好友（使用协程池）
+	if err := async.Submit(func() {
 		friendReq := &userpb.CheckIsFriendRequest{
 			UserUuid: currentUserUUID,
 			PeerUuid: req.UserUUID,
 		}
 		friendResp, err := s.userClient.CheckIsFriend(ctx, friendReq)
 		friendChan <- friendResult{resp: friendResp, err: err}
-	}()
+	}); err != nil {
+		friendChan <- friendResult{err: err}
+	}
 
 	// 等待两个服务调用完成
 	userRes := <-userChan

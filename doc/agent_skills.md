@@ -32,6 +32,13 @@ in this project. It is intended for AI agents and new contributors.
 
 ### 3. Conventions & Patterns
 
+#### 3.16 Async 协程池
+- 协程池实现：`pkg/async`，基于 ants（Worker Pool）。
+- 配置：`config/async.go`，默认 `DefaultAsyncConfig()`。
+- 初始化：每个独立进程在 main 中调用 `async.Init`，并 `defer async.Release()`。
+- 上下文透传：业务层通过 `async.SetContextPropagator` 注入需要透传的字段，避免在 async 包内硬编码。
+- 安全执行：使用 `async.RunSafe` 投递任务，内部具备 panic recover + 日志记录 + 超时日志提醒。
+
 #### 3.1 Error Handling
 - Business errors are encoded as `grpc/status` with numeric error codes in
   the message, then extracted in gateway via `utils.ExtractErrorCode`.

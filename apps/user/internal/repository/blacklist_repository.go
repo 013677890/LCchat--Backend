@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"ChatServer/pkg/async"
 	"ChatServer/model"
 	"context"
 	"errors"
@@ -87,17 +88,15 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 用户没有拉黑目标，需要缓存空值
 			// ==================== 3. 重建缓存（空值） ====================
-			pipe = r.redisClient.Pipeline()
-			pipe.Del(ctx, cacheKey) // 清理旧数据
-			// 空列表也用 Set，写入特殊标记
-			pipe.SAdd(ctx, cacheKey, "__EMPTY__")
-			// 空值缓存时间短一点 (5分钟)
-			pipe.Expire(ctx, cacheKey, 5*time.Minute)
-
-			// 执行空值的 Pipeline
-			if _, err := pipe.Exec(ctx); err != nil {
-				LogRedisError(ctx, err)
-			}
+			async.RunSafe(ctx, func(runCtx context.Context) {
+				pipe := r.redisClient.Pipeline()
+				pipe.Del(runCtx, cacheKey)
+				pipe.SAdd(runCtx, cacheKey, "__EMPTY__")
+				pipe.Expire(runCtx, cacheKey, 5*time.Minute)
+				if _, err := pipe.Exec(runCtx); err != nil {
+					LogRedisError(runCtx, err)
+				}
+			}, 0)
 
 			return false, nil
 		}
@@ -106,15 +105,16 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 	}
 
 	// ==================== 4. 找到了拉黑记录，重建缓存 ====================
-	pipe = r.redisClient.Pipeline()
-	pipe.Del(ctx, cacheKey) // 清理旧数据
-	pipe.SAdd(ctx, cacheKey, targetUUID)
-	pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-
 	// 异步执行写入，不需要等待结果，让接口响应更快
-	if _, err := pipe.Exec(ctx); err != nil {
-		LogRedisError(ctx, err)
-	}
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		pipe := r.redisClient.Pipeline()
+		pipe.Del(runCtx, cacheKey)
+		pipe.SAdd(runCtx, cacheKey, targetUUID)
+		pipe.Expire(runCtx, cacheKey, getRandomExpireTime(24*time.Hour))
+		if _, err := pipe.Exec(runCtx); err != nil {
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
 
 	return true, nil
 }

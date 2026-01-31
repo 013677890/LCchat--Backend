@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"ChatServer/pkg/async"
 	"ChatServer/model"
 	"context"
 	"fmt"
@@ -133,30 +134,30 @@ func (r *applyRepositoryImpl) ExistsPendingRequest(ctx context.Context, applican
 	}
 
 	// ==================== 3. 重建缓存 (ZSet) ====================
-	pipe = r.redisClient.Pipeline()
-	pipe.Del(ctx, cacheKey)
-
-	if len(applies) == 0 {
-		pipe.ZAdd(ctx, cacheKey, redis.Z{
-			Score:  0,
-			Member: "__EMPTY__",
-		})
-		pipe.Expire(ctx, cacheKey, 5*time.Minute)
-	} else {
-		zs := make([]redis.Z, 0, len(applies))
-		for _, apply := range applies {
-			zs = append(zs, redis.Z{
-				Score:  float64(apply.CreatedAt.Unix()),
-				Member: apply.ApplicantUuid,
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		pipe := r.redisClient.Pipeline()
+		pipe.Del(runCtx, cacheKey)
+		if len(applies) == 0 {
+			pipe.ZAdd(runCtx, cacheKey, redis.Z{
+				Score:  0,
+				Member: "__EMPTY__",
 			})
+			pipe.Expire(runCtx, cacheKey, 5*time.Minute)
+		} else {
+			zs := make([]redis.Z, 0, len(applies))
+			for _, apply := range applies {
+				zs = append(zs, redis.Z{
+					Score:  float64(apply.CreatedAt.Unix()),
+					Member: apply.ApplicantUuid,
+				})
+			}
+			pipe.ZAdd(runCtx, cacheKey, zs...)
+			pipe.Expire(runCtx, cacheKey, getRandomExpireTime(24*time.Hour))
 		}
-		pipe.ZAdd(ctx, cacheKey, zs...)
-		pipe.Expire(ctx, cacheKey, getRandomExpireTime(24*time.Hour))
-	}
-
-	if _, err := pipe.Exec(ctx); err != nil {
-		LogRedisError(ctx, err)
-	}
+		if _, err := pipe.Exec(runCtx); err != nil {
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
 
 	// ==================== 4. 根据回源结果判断 ====================
 	for _, apply := range applies {
