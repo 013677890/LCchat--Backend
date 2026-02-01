@@ -239,8 +239,64 @@ func (r *friendRepositoryImpl) GetRelationStatus(ctx context.Context, userUUID, 
 }
 
 // SyncFriendList 增量同步好友列表
-func (r *friendRepositoryImpl) SyncFriendList(ctx context.Context, userUUID string, version int64, limit int) ([]*model.UserRelation, int64, error) {
-	return nil, 0, nil // TODO: 增量同步好友列表
+// 返回值: 变更列表, nextVersion(客户端下次用的时间戳), hasMore(是否还有更多), error
+func (r *friendRepositoryImpl) SyncFriendList(ctx context.Context, userUUID string, version int64, limit int) ([]*model.UserRelation, int64, bool, error) {
+    // 1. 准备查询
+    // 客户端传来的 version 是毫秒，转成 time.Time
+    lastTime := time.UnixMilli(version)
+    
+    var relations []*model.UserRelation
+
+    // 2. 执行查询 (极致精简)
+    // 核心假设：GORM 软删除时会自动更新 updated_at。如果你的 GORM 配置没关这个，这就没问题。
+    err := r.db.WithContext(ctx).
+        Unscoped(). // 必须查出已删除的
+        Model(&model.UserRelation{}).
+        Where("user_uuid = ?", userUUID).
+        Where("updated_at > ?", lastTime). // 核心：只看 update 时间，利用索引
+        Order("updated_at ASC").           // 核心：利用索引排序，千万别用函数
+        Limit(limit + 1).                  // 多查一条，用于判断 hasMore
+        Find(&relations).Error
+
+    if err != nil {
+        return nil, 0, false, WrapDBError(err)
+    }
+
+    // 3. 计算 hasMore 和 nextVersion
+    hasMore := false
+    var nextVersion int64
+
+    if len(relations) > limit {
+        hasMore = true
+        relations = relations[:limit] // 去掉多查的那一条
+        // 情况 A：还有更多数据，Cursor 必须是本批次最后一条的时间
+        nextVersion = relations[len(relations)-1].UpdatedAt.UnixMilli()
+    } else {
+        hasMore = false
+        // 情况 B：没有更多数据了（追平了）
+        // 这里的 nextVersion 可以是最后一条的时间，也可以是 ServerTime
+        // 推荐：取 ServerTime 并回退 5 秒（安全窗口），防止事务并发导致的数据丢失
+        safeTime := time.Now().Add(-5 * time.Second).UnixMilli()
+        
+        // 如果列表为空，直接用 safeTime；如果不为空，取 max(lastItem, safeTime)
+        if len(relations) > 0 {
+            lastItemTime := relations[len(relations)-1].UpdatedAt.UnixMilli()
+            if lastItemTime > safeTime {
+                nextVersion = lastItemTime
+            } else {
+                nextVersion = safeTime
+            }
+        } else {
+            // 如果本来就没数据，说明 version 已经很新了，保持原样或推进到 safeTime
+            if safeTime > version {
+                nextVersion = safeTime
+            } else {
+                nextVersion = version
+            }
+        }
+    }
+
+    return relations, nextVersion, hasMore, nil
 }
 
 // BatchCheckIsFriend 批量检查是否为好友（使用Redis Set优化）

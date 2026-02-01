@@ -148,6 +148,12 @@ in this project. It is intended for AI agents and new contributors.
 
 - `user:apply:pending:{target_uuid}` / ZSet / 24h±随机抖动; 空值5m / `apply_repository` / 待处理好友申请 (member=applicant UUID, score=created_at unix, 空值占位 `__EMPTY__`)
 
+#### 3.17 Pagination & Versioning
+- 全量初始化接口的 `version` 用 **当前服务器时间**，不要用 `MAX(updated_at)`（避免删除/历史数据导致版本回退）。
+- 只在 **第一页** 计算 `total` 和 `version`，后续页不重复统计，降低 DB 压力。
+- 列表排序必须稳定：推荐 `created_at DESC, id DESC`。
+- Offset 分页存在并发抖动，客户端需按 `uuid` 去重（服务端保证稳定排序即可）。
+
 #### 3.13 Rate Limiting
 - **IP Level Rate Limiting**: Redis-based token bucket algorithm for IP addresses.
   - Global IP limiting via `IPRateLimitMiddleware`

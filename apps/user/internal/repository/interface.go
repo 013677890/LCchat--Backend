@@ -144,7 +144,7 @@ type IFriendRepository interface {
 	GetRelationStatus(ctx context.Context, userUUID, peerUUID string) (*model.UserRelation, error)
 
 	// SyncFriendList 增量同步好友列表
-	SyncFriendList(ctx context.Context, userUUID string, version int64, limit int) ([]*model.UserRelation, int64, error)
+	SyncFriendList(ctx context.Context, userUUID string, version int64, limit int) ([]*model.UserRelation, int64, bool, error) 
 }
 
 // ==================== 好友申请 Repository ====================

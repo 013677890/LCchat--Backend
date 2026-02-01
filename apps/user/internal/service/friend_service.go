@@ -9,6 +9,7 @@ import (
 	"ChatServer/pkg/logger"
 	"context"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -824,7 +825,155 @@ func (s *friendServiceImpl) GetFriendList(ctx context.Context, req *pb.GetFriend
 
 // SyncFriendList 好友增量同步
 func (s *friendServiceImpl) SyncFriendList(ctx context.Context, req *pb.SyncFriendListRequest) (*pb.SyncFriendListResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "好友增量同步功能暂未实现")
+	const syncVersionRollbackMs int64 = 2000 // 回退 2s，避免事务时间差漏数据
+
+	// 1. 从context中获取当前用户UUID
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 兜底同步参数
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	version := req.Version
+	if version < 0 {
+		version = 0
+	}
+
+	// 3. 查询增量变更（按时间升序）
+	relations, serverTime, hasMore, err := s.friendRepo.SyncFriendList(ctx, currentUserUUID, version, limit)
+	if err != nil {
+		logger.Error(ctx, "增量同步好友列表失败",
+			logger.String("user_uuid", currentUserUUID),
+			logger.Int("limit", limit),
+			logger.Int64("version", version),
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	// 4. 无变更：直接返回（latestVersion 使用服务器时间回退一小段）
+	if len(relations) == 0 {
+		latestVersion := serverTime - syncVersionRollbackMs
+		if latestVersion < 0 {
+			latestVersion = 0
+		}
+		return &pb.SyncFriendListResponse{
+			Changes:       []*pb.FriendChange{},
+			HasMore:       false,
+			LatestVersion: latestVersion,
+		}, nil
+	}
+
+	// 5. 判断是否还有更多
+	//if len(relations) > limit {
+	//	hasMore = true
+	//	relations = relations[:limit]
+	//}
+
+	// 6. 收集非删除关系的好友UUID
+	peerSet := make(map[string]struct{}, len(relations))
+	for _, relation := range relations {
+		if relation == nil || relation.PeerUuid == "" {
+			continue
+		}
+		if relation.DeletedAt.Valid {
+			continue
+		}
+		peerSet[relation.PeerUuid] = struct{}{}
+	}
+
+	// 7. 批量查询好友信息（仅非删除）
+	userMap := make(map[string]*model.UserInfo)
+	if len(peerSet) > 0 {
+		peerUUIDs := make([]string, 0, len(peerSet))
+		for uuid := range peerSet {
+			peerUUIDs = append(peerUUIDs, uuid)
+		}
+
+		users, err := s.userRepo.BatchGetByUUIDs(ctx, peerUUIDs)
+		if err != nil {
+			logger.Error(ctx, "批量查询好友信息失败",
+				logger.Int("count", len(peerUUIDs)),
+				logger.ErrorField("error", err),
+			)
+			return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+		}
+
+		for _, user := range users {
+			if user != nil {
+				userMap[user.Uuid] = user
+			}
+		}
+	}
+
+	// 8. 组装变更列表
+	versionTime := time.UnixMilli(version)
+	changes := make([]*pb.FriendChange, 0, len(relations))
+	var lastChangedAt int64
+
+	for _, relation := range relations {
+		if relation == nil {
+			continue
+		}
+
+		changeType := "update"
+		changedAt := relation.UpdatedAt.UnixMilli()
+
+		if relation.DeletedAt.Valid {
+			changeType = "delete"
+			changedAt = relation.DeletedAt.Time.UnixMilli()
+		} else if relation.CreatedAt.After(versionTime) {
+			changeType = "add"
+		}
+
+		change := &pb.FriendChange{
+			Uuid:       relation.PeerUuid,
+			Remark:     relation.Remark,
+			GroupTag:   relation.GroupTag,
+			Source:     relation.Source,
+			ChangeType: changeType,
+			ChangedAt:  changedAt,
+		}
+
+		if changeType != "delete" {
+			if user, ok := userMap[relation.PeerUuid]; ok && user != nil {
+				change.Nickname = user.Nickname
+				change.Avatar = user.Avatar
+				change.Gender = int32(user.Gender)
+				change.Signature = user.Signature
+			}
+		}
+
+		changes = append(changes, change)
+		lastChangedAt = changedAt
+	}
+
+	// 9. latestVersion 规则：
+	// - hasMore=true：取本批次最后一条的 changedAt
+	// - hasMore=false：取服务器当前时间并回退一小段
+	var latestVersion int64
+	if hasMore {
+		latestVersion = lastChangedAt
+	} else {
+		latestVersion = serverTime - syncVersionRollbackMs
+		if latestVersion < 0 {
+			latestVersion = 0
+		}
+	}
+
+	return &pb.SyncFriendListResponse{
+		Changes:       changes,
+		HasMore:       hasMore,
+		LatestVersion: latestVersion,
+	}, nil
 }
 
 // DeleteFriend 删除好友

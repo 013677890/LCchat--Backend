@@ -76,8 +76,6 @@ func (h *FriendHandler) SearchUser(c *gin.Context) {
 	result.Success(c, searchResp)
 }
 
-
-
 // SendFriendApply 发送好友申请接口
 // @Summary 发送好友申请
 // @Description 向目标用户发送好友请求
@@ -433,7 +431,7 @@ func (h *FriendHandler) SyncFriendList(c *gin.Context) {
 
 	// 2. 设置默认值
 	if req.Limit == 0 {
-		req.Limit = 20
+		req.Limit = 100
 	}
 
 	// 3. 调用服务层处理业务逻辑（依赖注入）

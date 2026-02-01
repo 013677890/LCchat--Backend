@@ -193,13 +193,18 @@ func ModelToProtoFriendChange(relation *model.UserRelation, user *model.UserInfo
 		return nil
 	}
 
+	changedAt := relation.UpdatedAt.UnixMilli()
+	if changeType == "delete" && relation.DeletedAt.Valid {
+		changedAt = relation.DeletedAt.Time.UnixMilli()
+	}
+
 	change := &pb.FriendChange{
 		Uuid:       relation.PeerUuid,
 		Remark:     relation.Remark,
 		GroupTag:   relation.GroupTag,
 		Source:     relation.Source,
 		ChangeType: changeType,
-		ChangedAt:  relation.UpdatedAt.Unix(),
+		ChangedAt:  changedAt,
 	}
 
 	if user != nil {

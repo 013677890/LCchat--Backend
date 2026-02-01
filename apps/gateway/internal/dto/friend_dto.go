@@ -147,8 +147,8 @@ type GetFriendListResponse struct {
 
 // SyncFriendListRequest 增量同步请求 DTO
 type SyncFriendListRequest struct {
-	Version int64 `json:"version" binding:"min=0"`       // 版本号
-	Limit   int32 `json:"limit" binding:"min=1,max=100"` // 每次同步数量
+	Version int64 `json:"version" binding:"min=0"`                 // 版本号
+	Limit   int32 `json:"limit" binding:"omitempty,min=1,max=500"` // 每次同步数量
 }
 
 // FriendChange 好友变更 DTO
