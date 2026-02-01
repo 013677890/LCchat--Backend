@@ -10,6 +10,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // applyRepositoryImpl 好友申请数据访问层实现
@@ -304,7 +305,158 @@ func (r *applyRepositoryImpl) GetSentList(ctx context.Context, applicantUUID str
 
 // UpdateStatus 更新申请状态
 func (r *applyRepositoryImpl) UpdateStatus(ctx context.Context, id int64, status int, remark string) error {
-	return nil // TODO: 更新申请状态
+	updates := map[string]interface{}{
+		"status": status,
+	}
+	if remark != "" {
+		updates["handle_remark"] = remark
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.ApplyRequest{}).
+		Where("id = ? AND status = ?", id, 0). // 只能处理待处理状态的申请
+		Updates(updates)
+
+	if result.Error != nil {
+		return WrapDBError(result.Error)
+	}
+
+	// 如果没有更新任何行，说明申请不存在或已处理
+	if result.RowsAffected == 0 {
+		return ErrApplyNotFound
+	}
+
+	return nil
+}
+
+// AcceptApplyAndCreateRelation 同意申请并创建好友关系（事务 + CAS幂等）
+// 在同一事务中执行：
+//  1. CAS 更新申请状态（WHERE status=0 守门员）
+//  2. 创建双向好友关系（拆分 Upsert 处理 remark）
+//     - A→B：更新 remark（用户同意时给对方的备注）
+//     - B→A：不覆盖 remark（保留对方原有备注）
+//
+// 返回值:
+//   - alreadyProcessed=true: 申请已被处理（幂等成功，不是错误）
+//   - err: 真正的数据库错误
+func (r *applyRepositoryImpl) AcceptApplyAndCreateRelation(ctx context.Context, applyId int64, userUUID, friendUUID, remark string) (bool, error) {
+	now := time.Now()
+	var alreadyProcessed bool
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. CAS 更新申请状态（WHERE status=0 作为守门员）
+		applyUpdates := map[string]interface{}{
+			"status": 1, // 同意
+		}
+		if remark != "" {
+			applyUpdates["handle_remark"] = remark
+		}
+
+		result := tx.Model(&model.ApplyRequest{}).
+			Where("id = ? AND status = ?", applyId, 0).
+			Updates(applyUpdates)
+
+		if result.Error != nil {
+			return result.Error
+		}
+
+		// 幂等判断：RowsAffected=0 表示已被处理
+		if result.RowsAffected == 0 {
+			alreadyProcessed = true
+			return nil // 不触发回滚，幂等成功
+		}
+
+		// 2. 创建 A→B 关系（更新 remark）
+		// 用户 A（userUUID）同意 B（friendUUID）的申请，A 给 B 设置备注
+		relationAB := &model.UserRelation{
+			UserUuid:  userUUID,
+			PeerUuid:  friendUUID,
+			Status:    0,
+			Remark:    remark, // A 给 B 的备注
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		// A→B 的更新策略：覆盖 remark
+		abUpdates := map[string]interface{}{
+			"status":     0,
+			"deleted_at": nil,
+			"updated_at": now,
+		}
+		if remark != "" {
+			abUpdates["remark"] = remark // 更新 A 给 B 的备注
+		}
+
+		err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_uuid"}, {Name: "peer_uuid"}},
+			DoUpdates: clause.Assignments(abUpdates),
+		}).Create(relationAB).Error
+		if err != nil {
+			return err
+		}
+
+		// 3. 创建 B→A 关系（不覆盖 remark，保留 B 原有的对 A 的备注）
+		relationBA := &model.UserRelation{
+			UserUuid:  friendUUID,
+			PeerUuid:  userUUID,
+			Status:    0,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		// B→A 的更新策略：只恢复状态，不覆盖 remark
+		err = tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "user_uuid"}, {Name: "peer_uuid"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"status":     0,
+				"deleted_at": nil,
+				"updated_at": now,
+				// 注意：不更新 remark，保留 B 原有对 A 的备注
+			}),
+		}).Create(relationBA).Error
+
+		return err
+	})
+
+	if err != nil {
+		return false, WrapDBError(err)
+	}
+
+	// 4. 事务成功后异步更新 Redis 好友缓存
+	if !alreadyProcessed {
+		r.invalidateFriendCacheAsync(ctx, userUUID, friendUUID)
+	}
+
+	return alreadyProcessed, nil
+}
+
+// invalidateFriendCacheAsync 异步更新双方的好友缓存
+func (r *applyRepositoryImpl) invalidateFriendCacheAsync(ctx context.Context, userUUID, friendUUID string) {
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		// 处理两个用户的缓存
+		pairs := []struct{ userKey, newFriend string }{
+			{fmt.Sprintf("user:relation:friend:%s", userUUID), friendUUID},
+			{fmt.Sprintf("user:relation:friend:%s", friendUUID), userUUID},
+		}
+
+		for _, pair := range pairs {
+			exists, err := r.redisClient.Exists(runCtx, pair.userKey).Result()
+			if err != nil {
+				logger.Error(runCtx, "Redis Exists 失败", logger.ErrorField("error", err))
+				continue
+			}
+
+			if exists > 0 {
+				pipe := r.redisClient.Pipeline()
+				pipe.SRem(runCtx, pair.userKey, "__EMPTY__")
+				pipe.SAdd(runCtx, pair.userKey, pair.newFriend)
+				pipe.Expire(runCtx, pair.userKey, 24*time.Hour+time.Duration(time.Now().UnixNano()%int64(time.Hour)))
+				if _, err := pipe.Exec(runCtx); err != nil {
+					logger.Error(runCtx, "Redis Pipeline 失败", logger.ErrorField("error", err))
+				}
+			}
+		}
+	}, 0)
 }
 
 // MarkAsRead 标记申请已读（同步）

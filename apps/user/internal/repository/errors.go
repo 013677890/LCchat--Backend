@@ -28,6 +28,9 @@ var (
 
 	// ErrRedis Redis 操作错误
 	ErrRedis = errors.New("redis error")
+
+	// ErrApplyNotFound 申请不存在或已处理
+	ErrApplyNotFound = errors.New("apply not found or already processed")
 )
 
 // ==================== 核心包装函数 ====================

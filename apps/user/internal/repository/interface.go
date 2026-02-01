@@ -166,6 +166,10 @@ type IApplyRepository interface {
 	// UpdateStatus 更新申请状态
 	UpdateStatus(ctx context.Context, id int64, status int, remark string) error
 
+	// AcceptApplyAndCreateRelation 同意申请并创建好友关系（事务 + CAS幂等）
+	// 返回值: alreadyProcessed=true 表示已被处理（幂等成功）
+	AcceptApplyAndCreateRelation(ctx context.Context, applyId int64, userUUID, friendUUID, remark string) (alreadyProcessed bool, err error)
+
 	// MarkAsRead 标记申请已读（同步）
 	MarkAsRead(ctx context.Context, ids []int64) error
 

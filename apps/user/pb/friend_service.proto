@@ -143,8 +143,8 @@ message SentApplyItem {
 // HandleFriendApplyRequest 处理好友申请请求
 message HandleFriendApplyRequest {
 	int64 apply_id = 1 [(validate.rules).int64 = {gt: 0}];
-	int32 action = 2 [(validate.rules).int32 = {gt: 0, lte: 2}]; // 1:同意 2:拒绝
-	string remark = 3 [(validate.rules).string.max_len = 64];
+	int32 action = 2 [(validate.rules).int32 = {gte: 1, lte: 2}]; // 1:同意 2:拒绝
+	string remark = 3 [(validate.rules).string.max_len = 100];
 }
 
 // HandleFriendApplyResponse 处理好友申请响应

@@ -1,14 +1,15 @@
 package repository
 
 import (
-	"ChatServer/pkg/async"
 	"ChatServer/model"
+	"ChatServer/pkg/async"
 	"context"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // friendRepositoryImpl 好友关系数据访问层实现
@@ -33,8 +34,51 @@ func (r *friendRepositoryImpl) GetFriendRelation(ctx context.Context, userUUID, 
 }
 
 // CreateFriendRelation 创建好友关系（双向）
+// 使用 Upsert (INSERT ON DUPLICATE KEY UPDATE) 策略：
+//   - 原子性：不存在"查不到然后插入报错"的时间差
+//   - 性能：2 条 SELECT + 2 条 INSERT 变成 1 条 INSERT
+//   - 稳健：正确处理软删除记录恢复场景
 func (r *friendRepositoryImpl) CreateFriendRelation(ctx context.Context, userUUID, friendUUID string) error {
-	return nil // TODO: 实现创建好友关系
+	now := time.Now()
+
+	// 1. 构建双向关系
+	relations := []*model.UserRelation{
+		{
+			UserUuid:  userUUID,
+			PeerUuid:  friendUUID,
+			Status:    0, // 正常状态
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			UserUuid:  friendUUID,
+			PeerUuid:  userUUID,
+			Status:    0, // 正常状态
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	// 2. 批量 Upsert (Insert On Duplicate Key Update)
+	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		// 指定冲突列（必须是数据库的唯一索引列）
+		Columns: []clause.Column{{Name: "user_uuid"}, {Name: "peer_uuid"}},
+		// 冲突时执行更新操作
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"status":     0,   // 恢复正常状态
+			"deleted_at": nil, // 【关键】恢复软删除
+			"updated_at": now, // 更新时间
+		}),
+	}).Create(&relations).Error
+
+	if err != nil {
+		return WrapDBError(err)
+	}
+
+	// 3. 异步更新 Redis 好友列表缓存（合并为一个调用减少协程开销）
+	r.invalidateFriendCacheAsync(ctx, userUUID, friendUUID)
+
+	return nil
 }
 
 // DeleteFriendRelation 删除好友关系（单向）
@@ -258,4 +302,36 @@ func (r *friendRepositoryImpl) BatchCheckIsFriend(ctx context.Context, userUUID 
 	}
 
 	return result, nil
+}
+
+// invalidateFriendCacheAsync 异步更新双方的好友缓存
+// 在单个协程中同时处理 userUUID 和 friendUUID 的缓存更新
+func (r *friendRepositoryImpl) invalidateFriendCacheAsync(ctx context.Context, userUUID, friendUUID string) {
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		// 处理两个用户的缓存
+		pairs := []struct{ userKey, newFriend string }{
+			{fmt.Sprintf("user:relation:friend:%s", userUUID), friendUUID},
+			{fmt.Sprintf("user:relation:friend:%s", friendUUID), userUUID},
+		}
+
+		for _, pair := range pairs {
+			// 检查缓存是否存在
+			exists, err := r.redisClient.Exists(runCtx, pair.userKey).Result()
+			if err != nil {
+				LogRedisError(runCtx, err)
+				continue
+			}
+
+			if exists > 0 {
+				// 缓存存在，直接添加新好友到 Set
+				pipe := r.redisClient.Pipeline()
+				pipe.SRem(runCtx, pair.userKey, "__EMPTY__")
+				pipe.SAdd(runCtx, pair.userKey, pair.newFriend)
+				pipe.Expire(runCtx, pair.userKey, getRandomExpireTime(24*time.Hour))
+				if _, err := pipe.Exec(runCtx); err != nil {
+					LogRedisError(runCtx, err)
+				}
+			}
+		}
+	}, 0)
 }

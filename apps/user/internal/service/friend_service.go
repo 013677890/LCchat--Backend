@@ -546,8 +546,89 @@ func (s *friendServiceImpl) GetSentApplyList(ctx context.Context, req *pb.GetSen
 }
 
 // HandleFriendApply 处理好友申请
+// 业务流程：
+//  1. 从context获取当前用户UUID
+//  2. 根据applyId获取申请详情
+//  3. 验证当前用户是否为申请的目标用户（有权限处理）
+//  4. 同意：调用 AcceptApplyAndCreateRelation（事务 + CAS幂等）
+//     拒绝：调用 UpdateStatus（CAS幂等）
 func (s *friendServiceImpl) HandleFriendApply(ctx context.Context, req *pb.HandleFriendApplyRequest) error {
-	return status.Error(codes.Unimplemented, "处理好友申请功能暂未实现")
+	// 1. 从context获取当前用户UUID（处理人）
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 根据applyId获取申请详情
+	apply, err := s.applyRepo.GetByID(ctx, req.ApplyId)
+	if err != nil {
+		logger.Warn(ctx, "获取好友申请失败",
+			logger.Int64("apply_id", req.ApplyId),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.NotFound, strconv.Itoa(consts.CodeApplyNotFoundOrHandle))
+	}
+
+	// 3. 验证当前用户是否有权限处理该申请
+	if apply.TargetUuid != currentUserUUID {
+		logger.Warn(ctx, "无权限处理该申请",
+			logger.Int64("apply_id", req.ApplyId),
+			logger.String("target_uuid", apply.TargetUuid),
+			logger.String("current_user", currentUserUUID),
+		)
+		return status.Error(codes.PermissionDenied, strconv.Itoa(consts.CodeNoPermission))
+	}
+
+	// 4. 处理申请
+	if req.Action == 1 {
+		// 同意：事务性更新申请状态 + 创建好友关系
+		alreadyProcessed, err := s.applyRepo.AcceptApplyAndCreateRelation(ctx, req.ApplyId, currentUserUUID, apply.ApplicantUuid, req.Remark)
+		if err != nil {
+			logger.Error(ctx, "同意好友申请失败",
+				logger.Int64("apply_id", req.ApplyId),
+				logger.ErrorField("error", err),
+			)
+			return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+		}
+
+		if alreadyProcessed {
+			logger.Info(ctx, "申请已被处理（幂等成功）",
+				logger.Int64("apply_id", req.ApplyId),
+			)
+		} else {
+			logger.Info(ctx, "同意好友申请，创建好友关系成功",
+				logger.String("user_uuid", currentUserUUID),
+				logger.String("friend_uuid", apply.ApplicantUuid),
+				logger.Int64("apply_id", req.ApplyId),
+			)
+		}
+	} else {
+		// 拒绝：只更新申请状态
+		err = s.applyRepo.UpdateStatus(ctx, req.ApplyId, int(req.Action), req.Remark)
+		if err != nil {
+			// ErrApplyNotFound 也是幂等成功
+			if err == repository.ErrApplyNotFound {
+				logger.Info(ctx, "申请已被处理（幂等成功）",
+					logger.Int64("apply_id", req.ApplyId),
+				)
+				return nil
+			}
+			logger.Error(ctx, "拒绝好友申请失败",
+				logger.Int64("apply_id", req.ApplyId),
+				logger.ErrorField("error", err),
+			)
+			return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+		}
+
+		logger.Info(ctx, "拒绝好友申请",
+			logger.String("user_uuid", currentUserUUID),
+			logger.String("applicant_uuid", apply.ApplicantUuid),
+			logger.Int64("apply_id", req.ApplyId),
+		)
+	}
+
+	return nil
 }
 
 // GetUnreadApplyCount 获取未读申请数量
