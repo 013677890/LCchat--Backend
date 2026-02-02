@@ -769,7 +769,37 @@ func (s *friendServiceImpl) SetFriendRemark(ctx context.Context, req *pb.SetFrie
 
 // SetFriendTag 设置好友标签
 func (s *friendServiceImpl) SetFriendTag(ctx context.Context, req *pb.SetFriendTagRequest) error {
-	return status.Error(codes.Unimplemented, "设置好友标签功能暂未实现")
+	// 1. 从context中获取当前用户UUID
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 参数校验
+	if req == nil || req.UserUuid == "" {
+		return status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeParamError))
+	}
+
+	// 3. 设置好友标签
+	if err := s.friendRepo.SetFriendTag(ctx, currentUserUUID, req.UserUuid, req.GroupTag); err != nil {
+		if errors.Is(err, repository.ErrRecordNotFound) {
+			return status.Error(codes.NotFound, strconv.Itoa(consts.CodeNotFriend))
+		}
+		logger.Error(ctx, "设置好友标签失败",
+			logger.String("user_uuid", currentUserUUID),
+			logger.String("peer_uuid", req.UserUuid),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	logger.Info(ctx, "设置好友标签成功",
+		logger.String("user_uuid", currentUserUUID),
+		logger.String("peer_uuid", req.UserUuid),
+	)
+
+	return nil
 }
 
 // GetTagList 获取标签列表

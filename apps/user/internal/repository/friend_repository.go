@@ -175,7 +175,25 @@ func (r *friendRepositoryImpl) SetFriendRemark(ctx context.Context, userUUID, fr
 
 // SetFriendTag 设置好友标签
 func (r *friendRepositoryImpl) SetFriendTag(ctx context.Context, userUUID, friendUUID, groupTag string) error {
-	return nil // TODO: 设置好友标签
+	now := time.Now()
+	result := r.db.WithContext(ctx).
+		Model(&model.UserRelation{}).
+		Where("user_uuid = ? AND peer_uuid = ? AND status = ? AND deleted_at IS NULL", userUUID, friendUUID, 0).
+		Updates(map[string]interface{}{
+			"group_tag":  groupTag,
+			"updated_at": now,
+		})
+
+	if result.Error != nil {
+		return WrapDBError(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
+	r.updateFriendTagCacheAsync(ctx, userUUID, friendUUID, groupTag, now.UnixMilli())
+
+	return nil
 }
 
 // GetTagList 获取标签列表
@@ -580,6 +598,81 @@ func (r *friendRepositoryImpl) updateFriendRemarkCacheAsync(ctx context.Context,
 				return
 			}
 			meta.Remark = remark
+			meta.UpdatedAt = updatedAt
+			metaJSON := buildFriendMetaJSON(meta.Remark, meta.GroupTag, meta.Source, meta.UpdatedAt)
+			expireSeconds := int(getRandomExpireTime(24 * time.Hour).Seconds())
+			luaScript := redis.NewScript(luaUpsertFriendMetaIfExists)
+			_, err = luaScript.Run(runCtx, r.redisClient,
+				[]string{cacheKey},
+				friendUUID,
+				metaJSON,
+				expireSeconds,
+			).Result()
+			if err != nil && err != redis.Nil {
+				if isRedisWrongType(err) {
+					_ = r.redisClient.Del(runCtx, cacheKey).Err()
+					return
+				}
+				LogRedisError(runCtx, err)
+			}
+			return
+		}
+
+		if metaCmd.Err() != redis.Nil {
+			if isRedisWrongType(metaCmd.Err()) {
+				_ = r.redisClient.Del(runCtx, cacheKey).Err()
+			} else {
+				LogRedisError(runCtx, metaCmd.Err())
+			}
+			return
+		}
+
+		// 缓存存在但字段缺失，回源补全
+		var relation model.UserRelation
+		if err := r.db.WithContext(runCtx).
+			Select("peer_uuid", "remark", "group_tag", "source", "updated_at").
+			Where("user_uuid = ? AND peer_uuid = ? AND status = ? AND deleted_at IS NULL", userUUID, friendUUID, 0).
+			First(&relation).Error; err != nil {
+			return
+		}
+
+		r.updateFriendMetaCacheAsync(runCtx, userUUID, &relation)
+	}, 0)
+}
+
+// updateFriendTagCacheAsync 异步更新好友标签缓存（单向）
+// 若缓存存在但字段缺失，则回源 MySQL 补全后写入
+func (r *friendRepositoryImpl) updateFriendTagCacheAsync(ctx context.Context, userUUID, friendUUID, groupTag string, updatedAt int64) {
+	if friendUUID == "" {
+		return
+	}
+
+	cacheKey := fmt.Sprintf("user:relation:friend:%s", userUUID)
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		pipe := r.redisClient.Pipeline()
+		existsCmd := pipe.Exists(runCtx, cacheKey)
+		metaCmd := pipe.HGet(runCtx, cacheKey, friendUUID)
+		_, err := pipe.Exec(runCtx)
+
+		if err != nil && err != redis.Nil {
+			if isRedisWrongType(err) {
+				_ = r.redisClient.Del(runCtx, cacheKey).Err()
+				return
+			}
+			LogRedisError(runCtx, err)
+			return
+		}
+
+		if existsCmd.Val() == 0 {
+			return
+		}
+
+		if metaCmd.Err() == nil {
+			meta, err := parseFriendMetaJSON(metaCmd.Val())
+			if err != nil {
+				return
+			}
+			meta.GroupTag = groupTag
 			meta.UpdatedAt = updatedAt
 			metaJSON := buildFriendMetaJSON(meta.Remark, meta.GroupTag, meta.Source, meta.UpdatedAt)
 			expireSeconds := int(getRandomExpireTime(24 * time.Hour).Seconds())
