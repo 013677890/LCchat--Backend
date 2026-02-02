@@ -46,9 +46,11 @@ func ModelToProtoSimpleUserInfo(user *model.UserInfo) *pb.SimpleUserInfo {
 		return nil
 	}
 	return &pb.SimpleUserInfo{
-		Uuid:     user.Uuid,
-		Nickname: user.Nickname,
-		Avatar:   user.Avatar,
+		Uuid:      user.Uuid,
+		Nickname:  user.Nickname,
+		Avatar:    user.Avatar,
+		Gender:    int32(user.Gender),
+		Signature: user.Signature,
 	}
 }
 
@@ -75,7 +77,6 @@ func ModelToProtoSimpleUserItem(user *model.UserInfo, isFriend bool) *pb.SimpleU
 	return &pb.SimpleUserItem{
 		Uuid:      user.Uuid,
 		Nickname:  user.Nickname,
-		Email:     user.Email,
 		Avatar:    user.Avatar,
 		Signature: user.Signature,
 		IsFriend:  isFriend,
@@ -110,6 +111,8 @@ func ModelToProtoFriendApplyItem(apply *model.ApplyRequest, applicant *model.Use
 		applicantInfo.Uuid = applicant.Uuid
 		applicantInfo.Nickname = applicant.Nickname
 		applicantInfo.Avatar = applicant.Avatar
+		applicantInfo.Gender = int32(applicant.Gender)
+		applicantInfo.Signature = applicant.Signature
 	}
 
 	return &pb.FriendApplyItem{

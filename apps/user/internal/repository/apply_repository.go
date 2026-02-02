@@ -643,7 +643,7 @@ func (r *applyRepositoryImpl) ExistsPendingRequest(ctx context.Context, applican
 	return false, nil
 }
 
-// GetByIDWithInfo 根据ID获取好友申请（包含申请人信息）
-func (r *applyRepositoryImpl) GetByIDWithInfo(ctx context.Context, id int64) (*model.ApplyRequest, *model.UserInfo, error) {
-	return nil, nil, nil // TODO: 根据ID获取好友申请（包含申请人信息）
+// GetByIDWithInfo 根据ID获取好友申请（仅申请记录）
+func (r *applyRepositoryImpl) GetByIDWithInfo(ctx context.Context, id int64) (*model.ApplyRequest, error) {
+	return nil, nil // TODO: 根据ID获取好友申请（仅申请记录）
 }

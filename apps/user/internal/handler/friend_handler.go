@@ -20,11 +20,6 @@ func NewFriendHandler(friendService service.IFriendService) *FriendHandler {
 	}
 }
 
-// SearchUser 搜索用户
-func (h *FriendHandler) SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
-	return h.friendService.SearchUser(ctx, req)
-}
-
 // SendFriendApply 发送好友申请
 func (h *FriendHandler) SendFriendApply(ctx context.Context, req *pb.SendFriendApplyRequest) (*pb.SendFriendApplyResponse, error) {
 	return h.friendService.SendFriendApply(ctx, req)

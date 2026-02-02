@@ -2,7 +2,6 @@ package service
 
 import (
 	"ChatServer/apps/user/internal/repository"
-	"ChatServer/apps/user/internal/utils"
 	pb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/model"
@@ -19,7 +18,6 @@ import (
 type friendServiceImpl struct {
 	friendRepo    repository.IFriendRepository
 	applyRepo     repository.IApplyRepository
-	userRepo      repository.IUserRepository
 	blacklistRepo repository.IBlacklistRepository
 }
 
@@ -27,134 +25,28 @@ type friendServiceImpl struct {
 func NewFriendService(
 	friendRepo repository.IFriendRepository,
 	applyRepo repository.IApplyRepository,
-	userRepo repository.IUserRepository,
 	blacklistRepo repository.IBlacklistRepository,
 ) FriendService {
 	return &friendServiceImpl{
 		friendRepo:    friendRepo,
 		applyRepo:     applyRepo,
-		userRepo:      userRepo,
 		blacklistRepo: blacklistRepo,
 	}
-}
-
-// SearchUser 搜索用户
-// 业务流程：
-//  1. 从context中获取当前用户UUID
-//  2. 调用userRepo搜索用户（按邮箱、昵称、UUID）
-//  3. 调用friendRepo批量判断是否为好友
-//  4. 非好友时脱敏邮箱
-//  5. 返回搜索结果
-//
-// 错误码映射：
-//   - codes.InvalidArgument: 关键词太短
-//   - codes.Internal: 系统内部错误
-func (s *friendServiceImpl) SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
-	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
-		logger.Error(ctx, "获取用户UUID失败")
-		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
-	}
-
-	// 2. 调用搜索用户
-	users, total, err := s.userRepo.SearchUser(ctx, req.Keyword, int(req.Page), int(req.PageSize))
-	if err != nil {
-		logger.Error(ctx, "搜索用户失败",
-			logger.String("keyword", req.Keyword),
-			logger.Int("page", int(req.Page)),
-			logger.Int("page_size", int(req.PageSize)),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-
-	if len(users) == 0 {
-		// 没有搜索到结果，返回空列表
-		return &pb.SearchUserResponse{
-			Items: []*pb.SimpleUserItem{},
-			Pagination: &pb.PaginationInfo{
-				Page:       req.Page,
-				PageSize:   req.PageSize,
-				Total:      total,
-				TotalPages: int32((total + int64(req.PageSize) - 1) / int64(req.PageSize)),
-			},
-		}, nil
-	}
-
-	// 3. 批量判断是否为好友（使用 Redis Set 优化）
-	userUUIDs := make([]string, len(users))
-	for i, user := range users {
-		userUUIDs[i] = user.Uuid
-	}
-
-	friendMap, err := s.friendRepo.BatchCheckIsFriend(ctx, currentUserUUID, userUUIDs)
-	if err != nil {
-		logger.Error(ctx, "批量判断是否好友失败",
-			logger.String("current_user_uuid", currentUserUUID),
-			logger.Int("count", len(userUUIDs)),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-
-	// 4. 构建响应（非好友时脱敏邮箱）
-	items := make([]*pb.SimpleUserItem, len(users))
-	for i, user := range users {
-		email := user.Email
-		if !friendMap[user.Uuid] && email != "" {
-			// 非好友时脱敏邮箱：只显示前3位和@domain部分
-			email = utils.MaskEmail(email)
-		}
-
-		items[i] = &pb.SimpleUserItem{
-			Uuid:      user.Uuid,
-			Nickname:  user.Nickname,
-			Email:     email,
-			Avatar:    user.Avatar,
-			Signature: user.Signature,
-			IsFriend:  friendMap[user.Uuid],
-		}
-	}
-
-	// 5. 计算总页数
-	totalPages := int32((total + int64(req.PageSize) - 1) / int64(req.PageSize))
-
-	logger.Info(ctx, "搜索用户成功",
-		logger.String("keyword", req.Keyword),
-		logger.Int("page", int(req.Page)),
-		logger.Int("page_size", int(req.PageSize)),
-		logger.Int64("total", total),
-		logger.Int("found", len(users)),
-	)
-
-	// 6. 返回搜索结果
-	return &pb.SearchUserResponse{
-		Items: items,
-		Pagination: &pb.PaginationInfo{
-			Page:       req.Page,
-			PageSize:   req.PageSize,
-			Total:      total,
-			TotalPages: totalPages,
-		},
-	}, nil
 }
 
 // SendFriendApply 发送好友申请
 // 业务流程：
 //  1. 从context中获取当前用户UUID（申请人）
-//  2. 检查目标用户是否存在
-//  3. 检查不能添加自己为好友
-//  4. 检查是否已经是好友
-//  5. 检查是否存在待处理的申请
-//  6. 检查对方是否已将你拉黑
-//  7. 检查你是否已将对方拉黑
-//  8. 创建好友申请记录
-//  9. 返回申请ID
+//  2. 检查不能添加自己为好友
+//  3. 检查是否已经是好友
+//  4. 检查是否存在待处理的申请
+//  5. 检查对方是否已将你拉黑
+//  6. 检查你是否已将对方拉黑
+//  7. 创建好友申请记录
+//  8. 返回申请ID
 //
 // 错误码映射：
 //   - codes.InvalidArgument: 不能添加自己为好友
-//   - codes.NotFound: 用户不存在
 //   - codes.AlreadyExists: 已经是好友、申请已发送
 //   - codes.FailedPrecondition: 对方已将你拉黑、你已将对方拉黑
 //   - codes.Internal: 系统内部错误
@@ -166,23 +58,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
 
-	// 2. 检查目标用户是否存在
-	targetUser, err := s.userRepo.GetByUUID(ctx, req.TargetUuid)
-	if err != nil {
-		logger.Error(ctx, "查询目标用户失败",
-			logger.String("target_uuid", req.TargetUuid),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-	if targetUser == nil {
-		logger.Warn(ctx, "目标用户不存在",
-			logger.String("target_uuid", req.TargetUuid),
-		)
-		return nil, status.Error(codes.NotFound, strconv.Itoa(consts.CodeUserNotFound))
-	}
-
-	// 3. 检查不能添加自己为好友
+	// 2. 检查不能添加自己为好友
 	if currentUserUUID == req.TargetUuid {
 		logger.Warn(ctx, "不能添加自己为好友",
 			logger.String("user_uuid", currentUserUUID),
@@ -190,7 +66,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeCannotAddSelf))
 	}
 
-	// 4. 检查是否已经是好友
+	// 3. 检查是否已经是好友
 	isFriend, err := s.friendRepo.IsFriend(ctx, currentUserUUID, req.TargetUuid)
 	if err != nil {
 		logger.Error(ctx, "检查是否好友失败",
@@ -209,7 +85,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.AlreadyExists, strconv.Itoa(consts.CodeAlreadyFriend))
 	}
 
-	// 5. 检查是否存在待处理的申请
+	// 4. 检查是否存在待处理的申请
 	exists, err := s.applyRepo.ExistsPendingRequest(ctx, currentUserUUID, req.TargetUuid)
 	if err != nil {
 		logger.Error(ctx, "检查待处理申请失败",
@@ -228,7 +104,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.AlreadyExists, strconv.Itoa(consts.CodeFriendRequestSent))
 	}
 
-	// 6. 检查对方是否已将你拉黑
+	// 5. 检查对方是否已将你拉黑
 	isBlockedByTarget, err := s.blacklistRepo.IsBlocked(ctx, req.TargetUuid, currentUserUUID)
 	if err != nil {
 		logger.Error(ctx, "检查是否被拉黑失败",
@@ -247,7 +123,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.FailedPrecondition, strconv.Itoa(consts.CodePeerBlacklistYou))
 	}
 
-	// 7. 检查你是否已将对方拉黑
+	// 6. 检查你是否已将对方拉黑
 	isBlocked, err := s.blacklistRepo.IsBlocked(ctx, currentUserUUID, req.TargetUuid)
 	if err != nil {
 		logger.Error(ctx, "检查拉黑状态失败",
@@ -266,7 +142,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		return nil, status.Error(codes.FailedPrecondition, strconv.Itoa(consts.CodeYouBlacklistPeer))
 	}
 
-	// 8. 创建好友申请记录
+	// 7. 创建好友申请记录
 	apply := &model.ApplyRequest{
 		ApplyType:     0, // 0=好友申请
 		ApplicantUuid: currentUserUUID,
@@ -295,7 +171,7 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 		logger.String("source", req.Source),
 	)
 
-	// 9. 返回申请ID
+	// 8. 返回申请ID
 	return &pb.SendFriendApplyResponse{
 		ApplyId: createdApply.Id,
 	}, nil
@@ -353,38 +229,6 @@ func (s *friendServiceImpl) GetFriendApplyList(ctx context.Context, req *pb.GetF
 		}, nil
 	}
 
-	// 去重收集申请人 UUID，减少批量查询压力
-	applicantSet := make(map[string]struct{}, len(applies))
-	for _, apply := range applies {
-		if apply != nil && apply.ApplicantUuid != "" {
-			applicantSet[apply.ApplicantUuid] = struct{}{}
-		}
-	}
-
-	// 构造去重后的 UUID 列表
-	applicantUUIDs := make([]string, 0, len(applicantSet))
-	for uuid := range applicantSet {
-		applicantUUIDs = append(applicantUUIDs, uuid)
-	}
-
-	// 批量查询申请人信息（昵称、头像）
-	users, err := s.userRepo.BatchGetByUUIDs(ctx, applicantUUIDs)
-	if err != nil {
-		logger.Error(ctx, "批量查询申请人信息失败",
-			logger.Int("count", len(applicantUUIDs)),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-
-	// 将用户信息映射到 map，便于组装响应
-	userMap := make(map[string]*model.UserInfo, len(users))
-	for _, user := range users {
-		if user != nil {
-			userMap[user.Uuid] = user
-		}
-	}
-
 	// 组装返回项（申请记录 + 申请人简要信息）
 	items := make([]*pb.FriendApplyItem, 0, len(applies))
 	unreadIDs := make([]int64, 0) // 收集未读申请的 ID
@@ -399,13 +243,8 @@ func (s *friendServiceImpl) GetFriendApplyList(ctx context.Context, req *pb.GetF
 			unreadIDs = append(unreadIDs, apply.Id)
 		}
 
-		user, ok := userMap[apply.ApplicantUuid]
 		applicantInfo := &pb.SimpleUserInfo{
 			Uuid: apply.ApplicantUuid,
-		}
-		if ok {
-			applicantInfo.Nickname = user.Nickname
-			applicantInfo.Avatar = user.Avatar
 		}
 
 		// created_at 使用毫秒时间戳（与网关 DTO 一致）
@@ -490,38 +329,6 @@ func (s *friendServiceImpl) GetSentApplyList(ctx context.Context, req *pb.GetSen
 		}, nil
 	}
 
-	// 去重收集目标用户 UUID，减少批量查询压力
-	targetSet := make(map[string]struct{}, len(applies))
-	for _, apply := range applies {
-		if apply != nil && apply.TargetUuid != "" {
-			targetSet[apply.TargetUuid] = struct{}{}
-		}
-	}
-
-	// 构造去重后的 UUID 列表
-	targetUUIDs := make([]string, 0, len(targetSet))
-	for uuid := range targetSet {
-		targetUUIDs = append(targetUUIDs, uuid)
-	}
-
-	// 批量查询目标用户信息（昵称、头像）
-	users, err := s.userRepo.BatchGetByUUIDs(ctx, targetUUIDs)
-	if err != nil {
-		logger.Error(ctx, "批量查询目标用户信息失败",
-			logger.Int("count", len(targetUUIDs)),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-
-	// 将用户信息映射到 map，便于组装响应
-	userMap := make(map[string]*model.UserInfo, len(users))
-	for _, user := range users {
-		if user != nil {
-			userMap[user.Uuid] = user
-		}
-	}
-
 	// 组装返回项（申请记录 + 目标用户简要信息）
 	items := make([]*pb.SentApplyItem, 0, len(applies))
 	for _, apply := range applies {
@@ -529,13 +336,8 @@ func (s *friendServiceImpl) GetSentApplyList(ctx context.Context, req *pb.GetSen
 			continue
 		}
 
-		user, ok := userMap[apply.TargetUuid]
 		targetInfo := &pb.SimpleUserInfo{
 			Uuid: apply.TargetUuid,
-		}
-		if ok {
-			targetInfo.Nickname = user.Nickname
-			targetInfo.Avatar = user.Avatar
 		}
 
 		items = append(items, &pb.SentApplyItem{
@@ -756,56 +558,19 @@ func (s *friendServiceImpl) GetFriendList(ctx context.Context, req *pb.GetFriend
 		}, nil
 	}
 
-	// 4. 去重收集好友UUID，减少批量查询压力
-	peerSet := make(map[string]struct{}, len(relations))
-	for _, relation := range relations {
-		if relation != nil && relation.PeerUuid != "" {
-			peerSet[relation.PeerUuid] = struct{}{}
-		}
-	}
-
-	peerUUIDs := make([]string, 0, len(peerSet))
-	for uuid := range peerSet {
-		peerUUIDs = append(peerUUIDs, uuid)
-	}
-
-	// 5. 批量查询好友信息
-	users, err := s.userRepo.BatchGetByUUIDs(ctx, peerUUIDs)
-	if err != nil {
-		logger.Error(ctx, "批量查询好友信息失败",
-			logger.Int("count", len(peerUUIDs)),
-			logger.ErrorField("error", err),
-		)
-		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-	}
-
-	userMap := make(map[string]*model.UserInfo, len(users))
-	for _, user := range users {
-		if user != nil {
-			userMap[user.Uuid] = user
-		}
-	}
-
-	// 6. 组装返回项（好友关系 + 好友信息）
+	// 4. 组装返回项（好友关系数据）
 	items := make([]*pb.FriendItem, 0, len(relations))
 	for _, relation := range relations {
 		if relation == nil {
 			continue
 		}
 
-		user, ok := userMap[relation.PeerUuid]
 		item := &pb.FriendItem{
 			Uuid:      relation.PeerUuid,
 			Remark:    relation.Remark,
 			GroupTag:  relation.GroupTag,
 			Source:    relation.Source,
 			CreatedAt: relation.CreatedAt.UnixMilli(),
-		}
-		if ok {
-			item.Nickname = user.Nickname
-			item.Avatar = user.Avatar
-			item.Gender = int32(user.Gender)
-			item.Signature = user.Signature
 		}
 
 		items = append(items, item)
@@ -878,43 +643,7 @@ func (s *friendServiceImpl) SyncFriendList(ctx context.Context, req *pb.SyncFrie
 	//	relations = relations[:limit]
 	//}
 
-	// 6. 收集非删除关系的好友UUID
-	peerSet := make(map[string]struct{}, len(relations))
-	for _, relation := range relations {
-		if relation == nil || relation.PeerUuid == "" {
-			continue
-		}
-		if relation.DeletedAt.Valid {
-			continue
-		}
-		peerSet[relation.PeerUuid] = struct{}{}
-	}
-
-	// 7. 批量查询好友信息（仅非删除）
-	userMap := make(map[string]*model.UserInfo)
-	if len(peerSet) > 0 {
-		peerUUIDs := make([]string, 0, len(peerSet))
-		for uuid := range peerSet {
-			peerUUIDs = append(peerUUIDs, uuid)
-		}
-
-		users, err := s.userRepo.BatchGetByUUIDs(ctx, peerUUIDs)
-		if err != nil {
-			logger.Error(ctx, "批量查询好友信息失败",
-				logger.Int("count", len(peerUUIDs)),
-				logger.ErrorField("error", err),
-			)
-			return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
-		}
-
-		for _, user := range users {
-			if user != nil {
-				userMap[user.Uuid] = user
-			}
-		}
-	}
-
-	// 8. 组装变更列表
+	// 6. 组装变更列表
 	versionTime := time.UnixMilli(version)
 	changes := make([]*pb.FriendChange, 0, len(relations))
 	var lastChangedAt int64
@@ -943,20 +672,11 @@ func (s *friendServiceImpl) SyncFriendList(ctx context.Context, req *pb.SyncFrie
 			ChangedAt:  changedAt,
 		}
 
-		if changeType != "delete" {
-			if user, ok := userMap[relation.PeerUuid]; ok && user != nil {
-				change.Nickname = user.Nickname
-				change.Avatar = user.Avatar
-				change.Gender = int32(user.Gender)
-				change.Signature = user.Signature
-			}
-		}
-
 		changes = append(changes, change)
 		lastChangedAt = changedAt
 	}
 
-	// 9. latestVersion 规则：
+	// 7. latestVersion 规则：
 	// - hasMore=true：取本批次最后一条的 changedAt
 	// - hasMore=false：取服务器当前时间并回退一小段
 	var latestVersion int64

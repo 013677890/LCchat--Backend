@@ -103,7 +103,7 @@ type IUserRepository interface {
 	// GetQRCodeTokenByUserUUID 根据用户 UUID 获取二维码 token
 	GetQRCodeTokenByUserUUID(ctx context.Context, userUUID string) (string, time.Time, error)
 
-	// SearchUser 搜索用户（按手机号或昵称）
+	// SearchUser 搜索用户（按邮箱、昵称、UUID）
 	SearchUser(ctx context.Context, keyword string, page, pageSize int) ([]*model.UserInfo, int64, error)
 }
 
@@ -188,8 +188,8 @@ type IApplyRepository interface {
 	// ExistsPendingRequest 检查是否存在待处理的申请
 	ExistsPendingRequest(ctx context.Context, applicantUUID, targetUUID string) (bool, error)
 
-	// GetByIDWithInfo 根据ID获取好友申请（包含申请人信息）
-	GetByIDWithInfo(ctx context.Context, id int64) (*model.ApplyRequest, *model.UserInfo, error)
+	// GetByIDWithInfo 根据ID获取好友申请（仅申请记录）
+	GetByIDWithInfo(ctx context.Context, id int64) (*model.ApplyRequest, error)
 }
 
 // ==================== 黑名单 Repository ====================

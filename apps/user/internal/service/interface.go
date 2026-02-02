@@ -46,6 +46,9 @@ type IUserService interface {
 	// GetOtherProfile 获取他人信息
 	GetOtherProfile(ctx context.Context, req *pb.GetOtherProfileRequest) (*pb.GetOtherProfileResponse, error)
 
+	// SearchUser 搜索用户
+	SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error)
+
 	// UpdateProfile 更新基本信息
 	UpdateProfile(ctx context.Context, req *pb.UpdateProfileRequest) (*pb.UpdateProfileResponse, error)
 
@@ -79,9 +82,6 @@ type IUserService interface {
 // IFriendService 好友服务接口
 // 职责：搜索用户、好友申请、好友列表、备注标签
 type IFriendService interface {
-	// SearchUser 搜索用户
-	SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error)
-
 	// SendFriendApply 发送好友申请
 	SendFriendApply(ctx context.Context, req *pb.SendFriendApplyRequest) (*pb.SendFriendApplyResponse, error)
 

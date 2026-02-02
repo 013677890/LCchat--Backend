@@ -30,6 +30,11 @@ func (h *UserHandler) GetOtherProfile(ctx context.Context, req *pb.GetOtherProfi
 	return h.userService.GetOtherProfile(ctx, req)
 }
 
+// SearchUser 搜索用户
+func (h *UserHandler) SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
+	return h.userService.SearchUser(ctx, req)
+}
+
 // UpdateProfile 更新基本信息
 func (h *UserHandler) UpdateProfile(ctx context.Context, req *pb.UpdateProfileRequest) (*pb.UpdateProfileResponse, error) {
 	return h.userService.UpdateProfile(ctx, req)

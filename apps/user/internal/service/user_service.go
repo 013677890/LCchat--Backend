@@ -112,6 +112,84 @@ func (s *userServiceImpl) GetOtherProfile(ctx context.Context, req *pb.GetOtherP
 	}, nil
 }
 
+// SearchUser 搜索用户
+// 业务流程：
+//  1. 从context中获取当前用户UUID（用于鉴权）
+//  2. 调用userRepo搜索用户（按邮箱、昵称、UUID）
+//  3. 组装响应（不返回 email）
+//
+// 错误码映射：
+//   - codes.InvalidArgument: 关键词太短
+//   - codes.Internal: 系统内部错误
+func (s *userServiceImpl) SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
+	// 1. 从context中获取当前用户UUID
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 调用搜索用户
+	users, total, err := s.userRepo.SearchUser(ctx, req.Keyword, int(req.Page), int(req.PageSize))
+	if err != nil {
+		logger.Error(ctx, "搜索用户失败",
+			logger.String("keyword", req.Keyword),
+			logger.Int("page", int(req.Page)),
+			logger.Int("page_size", int(req.PageSize)),
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	if len(users) == 0 {
+		// 没有搜索到结果，返回空列表
+		return &pb.SearchUserResponse{
+			Items: []*pb.SimpleUserItem{},
+			Pagination: &pb.PaginationInfo{
+				Page:       req.Page,
+				PageSize:   req.PageSize,
+				Total:      total,
+				TotalPages: int32((total + int64(req.PageSize) - 1) / int64(req.PageSize)),
+			},
+		}, nil
+	}
+
+	// 3. 构建响应（不返回 email，isFriend 由网关聚合）
+	items := make([]*pb.SimpleUserItem, len(users))
+	for i, user := range users {
+		items[i] = &pb.SimpleUserItem{
+			Uuid:      user.Uuid,
+			Nickname:  user.Nickname,
+			Avatar:    user.Avatar,
+			Signature: user.Signature,
+			IsFriend:  false,
+		}
+	}
+
+	// 4. 计算总页数
+	totalPages := int32((total + int64(req.PageSize) - 1) / int64(req.PageSize))
+
+	logger.Info(ctx, "搜索用户成功",
+		logger.String("keyword", req.Keyword),
+		logger.String("user_uuid", currentUserUUID),
+		logger.Int("page", int(req.Page)),
+		logger.Int("page_size", int(req.PageSize)),
+		logger.Int64("total", total),
+		logger.Int("found", len(users)),
+	)
+
+	// 5. 返回搜索结果
+	return &pb.SearchUserResponse{
+		Items: items,
+		Pagination: &pb.PaginationInfo{
+			Page:       req.Page,
+			PageSize:   req.PageSize,
+			Total:      total,
+			TotalPages: totalPages,
+		},
+	}, nil
+}
+
 // UpdateProfile 更新基本信息
 // 业务流程：
 //  1. 从context中获取用户UUID
@@ -658,9 +736,11 @@ func (s *userServiceImpl) BatchGetProfile(ctx context.Context, req *pb.BatchGetP
 	simpleUsers := make([]*pb.SimpleUserInfo, 0, len(users))
 	for _, user := range users {
 		simpleUsers = append(simpleUsers, &pb.SimpleUserInfo{
-			Uuid:     user.Uuid,
-			Nickname: user.Nickname,
-			Avatar:   user.Avatar,
+			Uuid:      user.Uuid,
+			Nickname:  user.Nickname,
+			Avatar:    user.Avatar,
+			Gender:    int32(user.Gender),
+			Signature: user.Signature,
 		})
 	}
 
