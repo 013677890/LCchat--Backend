@@ -608,6 +608,14 @@ func (s *authServiceImpl) RefreshToken(ctx context.Context, req *pb.RefreshToken
 		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
 	}
 
+	// 6. 续期设备信息缓存 TTL
+	if err := s.deviceRepo.TouchDeviceInfoTTL(ctx, userUUID); err != nil {
+		logger.Warn(ctx, "续期设备信息缓存失败",
+			logger.String("user_uuid", userUUID),
+			logger.ErrorField("error", err),
+		)
+	}
+
 	// 6. 刷新成功
 	logger.Info(ctx, "Token 刷新成功",
 		logger.String("user_uuid", userUUID),

@@ -53,6 +53,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		// 4. 将用户信息存入 Context，供后续 Handler 使用
 		c.Set("user_uuid", claims.UserUUID)
 		c.Set("device_id", claims.DeviceID)
+		updateDeviceActive(claims.UserUUID, claims.DeviceID)
 
 		c.Next()
 	}

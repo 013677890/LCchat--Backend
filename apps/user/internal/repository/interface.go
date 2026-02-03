@@ -231,6 +231,15 @@ type IDeviceRepository interface {
 	// UpsertSession 创建或更新设备会话（Upsert）
 	UpsertSession(ctx context.Context, session *model.DeviceSession) error
 
+	// TouchDeviceInfoTTL 续期设备信息缓存 TTL
+	TouchDeviceInfoTTL(ctx context.Context, userUUID string) error
+
+	// GetActiveTimestamps 获取设备活跃时间戳（unix 秒）
+	GetActiveTimestamps(ctx context.Context, userUUID string, deviceIDs []string) (map[string]int64, error)
+
+	// SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期
+	SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error
+
 	// UpdateOnlineStatus 更新在线状态
 	UpdateOnlineStatus(ctx context.Context, userUUID, deviceID string, status int8) error
 

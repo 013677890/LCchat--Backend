@@ -64,7 +64,7 @@
 
 | Key Pattern | 数据类型 | TTL | Repository | 说明 |
 |-------------|----------|-----|------------|------|
-| `user:devices:{user_uuid}` | Hash | - | `device_repository` | 设备详情缓存（field=device_id, value=json） |
+| `user:devices:{user_uuid}` | Hash | 60d | `device_repository` | 设备详情缓存（field=device_id, value=json） |
 
 value JSON 字段示例：
 ```json
@@ -75,11 +75,27 @@ value JSON 字段示例：
 
 | 函数 | 操作 | Key |
 |------|------|-----|
-| `storeDeviceInfoCache()` | HSET | `user:devices:{user_uuid}` |
+| `storeDeviceInfoCache()` | HSET + EXPIRE | `user:devices:{user_uuid}` |
+| `TouchDeviceInfoTTL()` | EXPIRE | `user:devices:{user_uuid}` |
 
 ---
 
-### 2.4 用户信息缓存
+### 2.4 设备活跃时间
+
+| Key Pattern | 数据类型 | TTL | Repository | 说明 |
+|-------------|----------|-----|------------|------|
+| `user:devices:active:{user_uuid}` | Hash | 45d | `device_repository` | 设备活跃时间缓存（field=device_id, value=unix秒） |
+
+#### 操作函数
+
+| 函数 | 操作 | Key |
+|------|------|-----|
+| `GetActiveTimestamps()` | HMGET | `user:devices:active:{user_uuid}` |
+| `SetActiveTimestamp()` | HSET + EXPIRE | `user:devices:active:{user_uuid}` |
+
+---
+
+### 2.5 用户信息缓存
 
 | Key Pattern | 数据类型 | TTL | Repository | 说明 |
 |-------------|----------|-----|------------|------|
@@ -99,7 +115,7 @@ value JSON 字段示例：
 
 ---
 
-### 2.5 二维码
+### 2.6 二维码
 
 | Key Pattern | 数据类型 | TTL | Repository | 说明 |
 |-------------|----------|-----|------------|------|

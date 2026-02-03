@@ -8,6 +8,7 @@ import (
 	"ChatServer/pkg/util"
 	"context"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -44,15 +45,40 @@ func (s *deviceServiceImpl) GetDeviceList(ctx context.Context, req *pb.GetDevice
 		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
 	}
 
+	deviceIDs := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		if session == nil {
+			continue
+		}
+		deviceIDs = append(deviceIDs, session.DeviceId)
+	}
+
+	activeTimes, err := s.deviceRepo.GetActiveTimestamps(ctx, userUUID, deviceIDs)
+	if err != nil {
+		logger.Warn(ctx, "获取设备活跃时间失败，使用当前时间兜底",
+			logger.String("user_uuid", userUUID),
+			logger.ErrorField("error", err),
+		)
+		activeTimes = map[string]int64{}
+	}
+
 	devices := make([]*pb.DeviceItem, 0, len(sessions))
 	for _, session := range sessions {
 		if session == nil {
 			continue
 		}
-		lastSeenAt := util.TimeToUnixMilli(session.UpdatedAt)
-		if lastSeenAt == 0 {
-			lastSeenAt = util.TimeToUnixMilli(session.CreatedAt)
+		sec, ok := activeTimes[session.DeviceId]
+		if !ok || sec <= 0 {
+			sec = time.Now().Unix()
+			if err := s.deviceRepo.SetActiveTimestamp(ctx, userUUID, session.DeviceId, sec); err != nil {
+				logger.Warn(ctx, "补写设备活跃时间失败",
+					logger.String("user_uuid", userUUID),
+					logger.String("device_id", session.DeviceId),
+					logger.ErrorField("error", err),
+				)
+			}
 		}
+		lastSeenAt := sec * 1000
 		devices = append(devices, &pb.DeviceItem{
 			DeviceId:        session.DeviceId,
 			DeviceName:      session.DeviceName,

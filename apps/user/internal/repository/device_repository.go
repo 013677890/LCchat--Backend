@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -19,6 +20,11 @@ type deviceRepositoryImpl struct {
 	db          *gorm.DB
 	redisClient *redis.Client
 }
+
+const (
+	deviceInfoTTL   = 60 * 24 * time.Hour
+	deviceActiveTTL = 45 * 24 * time.Hour
+)
 
 // NewDeviceRepository 创建设备会话仓储实例
 func NewDeviceRepository(db *gorm.DB, redisClient *redis.Client) IDeviceRepository {
@@ -36,6 +42,10 @@ func (r *deviceRepositoryImpl) refreshTokenKey(userUUID, deviceID string) string
 
 func (r *deviceRepositoryImpl) deviceInfoKey(userUUID string) string {
 	return fmt.Sprintf("user:devices:%s", userUUID)
+}
+
+func (r *deviceRepositoryImpl) deviceActiveKey(userUUID string) string {
+	return fmt.Sprintf("user:devices:active:%s", userUUID)
 }
 
 type deviceCacheItem struct {
@@ -123,6 +133,9 @@ func (r *deviceRepositoryImpl) UpsertSession(ctx context.Context, session *model
 }
 
 func (r *deviceRepositoryImpl) storeDeviceInfoCache(ctx context.Context, session *model.DeviceSession, loginAt time.Time) {
+	if r.redisClient == nil {
+		return
+	}
 	cacheKey := r.deviceInfoKey(session.UserUuid)
 	item := deviceCacheItem{
 		DeviceID:   session.DeviceId,
@@ -139,12 +152,94 @@ func (r *deviceRepositoryImpl) storeDeviceInfoCache(ctx context.Context, session
 		return
 	}
 
-	if err := r.redisClient.HSet(ctx, cacheKey, session.DeviceId, value).Err(); err != nil {
-		task := mq.BuildHSetTask(cacheKey, session.DeviceId, value).
+	pipe := r.redisClient.Pipeline()
+	pipe.HSet(ctx, cacheKey, session.DeviceId, value)
+	pipe.Expire(ctx, cacheKey, deviceInfoTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		cmds := []mq.RedisCmd{
+			{Command: "hset", Args: []interface{}{cacheKey, session.DeviceId, value}},
+			{Command: "expire", Args: []interface{}{cacheKey, int(deviceInfoTTL.Seconds())}},
+		}
+		task := mq.BuildPipelineTask(cmds).
 			WithSource("DeviceRepository.storeDeviceInfoCache").
 			WithMaxRetries(5)
 		LogAndRetryRedisError(ctx, task, err)
 	}
+}
+
+// TouchDeviceInfoTTL 续期设备信息缓存 TTL
+func (r *deviceRepositoryImpl) TouchDeviceInfoTTL(ctx context.Context, userUUID string) error {
+	if r.redisClient == nil {
+		return nil
+	}
+	key := r.deviceInfoKey(userUUID)
+	if err := r.redisClient.Expire(ctx, key, deviceInfoTTL).Err(); err != nil {
+		task := mq.BuildPipelineTask([]mq.RedisCmd{
+			{Command: "expire", Args: []interface{}{key, int(deviceInfoTTL.Seconds())}},
+		}).WithSource("DeviceRepository.TouchDeviceInfoTTL").WithMaxRetries(3)
+		LogAndRetryRedisError(ctx, task, err)
+		return WrapRedisError(err)
+	}
+	return nil
+}
+
+// GetActiveTimestamps 获取设备活跃时间戳（unix 秒）
+func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID string, deviceIDs []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(deviceIDs))
+	if len(deviceIDs) == 0 {
+		return result, nil
+	}
+	if r.redisClient == nil {
+		return result, nil
+	}
+	key := r.deviceActiveKey(userUUID)
+	values, err := r.redisClient.HMGet(ctx, key, deviceIDs...).Result()
+	if err != nil {
+		return nil, WrapRedisError(err)
+	}
+	for i, v := range values {
+		if v == nil {
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if ts, parseErr := strconv.ParseInt(val, 10, 64); parseErr == nil {
+				result[deviceIDs[i]] = ts
+			}
+		case []byte:
+			if ts, parseErr := strconv.ParseInt(string(val), 10, 64); parseErr == nil {
+				result[deviceIDs[i]] = ts
+			}
+		case int64:
+			result[deviceIDs[i]] = val
+		case int:
+			result[deviceIDs[i]] = int64(val)
+		}
+	}
+	return result, nil
+}
+
+// SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期
+func (r *deviceRepositoryImpl) SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error {
+	if r.redisClient == nil {
+		return nil
+	}
+	key := r.deviceActiveKey(userUUID)
+	pipe := r.redisClient.Pipeline()
+	pipe.HSet(ctx, key, deviceID, ts)
+	pipe.Expire(ctx, key, deviceActiveTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		cmds := []mq.RedisCmd{
+			{Command: "hset", Args: []interface{}{key, deviceID, ts}},
+			{Command: "expire", Args: []interface{}{key, int(deviceActiveTTL.Seconds())}},
+		}
+		task := mq.BuildPipelineTask(cmds).
+			WithSource("DeviceRepository.SetActiveTimestamp").
+			WithMaxRetries(5)
+		LogAndRetryRedisError(ctx, task, err)
+		return WrapRedisError(err)
+	}
+	return nil
 }
 
 // StoreAccessToken 将 AccessToken 存入 Redis

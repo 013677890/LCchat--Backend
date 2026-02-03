@@ -7,6 +7,7 @@ import (
 	v1 "ChatServer/apps/gateway/internal/router/v1"
 	"ChatServer/apps/gateway/internal/service"
 	"ChatServer/config"
+	"ChatServer/pkg/deviceactive"
 	"ChatServer/pkg/async"
 	"ChatServer/pkg/logger"
 	pkgminio "ChatServer/pkg/minio"
@@ -125,6 +126,19 @@ func main() {
 		logger.Int("burst", 20),
 		logger.String("blacklist_key", "gateway:blacklist:ips"),
 	)
+
+	// 4.5 初始化设备活跃时间 LRU 缓存
+	deviceActiveCfg := config.DefaultDeviceActiveConfig()
+	if err := deviceactive.Init(deviceActiveCfg.CacheSize); err != nil {
+		logger.Error(ctx, "设备活跃时间缓存初始化失败",
+			logger.ErrorField("error", err),
+			logger.Int("cache_size", deviceActiveCfg.CacheSize),
+		)
+	} else {
+		logger.Info(ctx, "设备活跃时间缓存初始化完成",
+			logger.Int("cache_size", deviceActiveCfg.CacheSize),
+		)
+	}
 
 	// 5. 初始化 gRPC 客户端（依赖注入）
 	// TODO: 从配置文件读取user服务地址
