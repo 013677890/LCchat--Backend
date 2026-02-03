@@ -17,6 +17,8 @@ type UserRelation struct {
 	Source   string `gorm:"column:source;type:varchar(64);comment:添加来源，如手机号/群/二维码"`
 	//LastContactAt *time.Time     `gorm:"column:last_contact_at;comment:最近联系时间"`  性能问题，不存储最近联系时间
 	GroupTag  string         `gorm:"column:group_tag;type:varchar(32);comment:标签"`
+	// BlacklistedAt 拉黑时间（仅 status=1/3 有效）
+	BlacklistedAt *time.Time `gorm:"column:blacklisted_at;comment:拉黑时间"`
 	CreatedAt time.Time      `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"column:updated_at;index:idx_user_updated_at;autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index"`

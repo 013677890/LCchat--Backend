@@ -173,9 +173,13 @@ func (s *blacklistServiceImpl) GetBlacklistList(ctx context.Context, req *pb.Get
 		if relation == nil {
 			continue
 		}
+		blacklistedAt := relation.UpdatedAt
+		if relation.BlacklistedAt != nil {
+			blacklistedAt = *relation.BlacklistedAt
+		}
 		items = append(items, &pb.BlacklistItem{
 			Uuid:          relation.PeerUuid,
-			BlacklistedAt: relation.UpdatedAt.UnixMilli(),
+			BlacklistedAt: blacklistedAt.UnixMilli(),
 		})
 	}
 

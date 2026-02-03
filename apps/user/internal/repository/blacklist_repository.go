@@ -57,12 +57,14 @@ func (r *blacklistRepositoryImpl) AddBlacklist(ctx context.Context, userUUID, ta
 			Status:    status,
 			CreatedAt: now,
 			UpdatedAt: now,
+			BlacklistedAt: &now,
 		}
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_uuid"}, {Name: "peer_uuid"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"status":     status,
 				"deleted_at": nil,
+				"blacklisted_at": now,
 				"updated_at": now,
 			}),
 		}).Create(relationAB).Error; err != nil {
@@ -103,7 +105,8 @@ func (r *blacklistRepositoryImpl) RemoveBlacklist(ctx context.Context, userUUID,
 
 	now := time.Now()
 	updates := map[string]interface{}{
-		"updated_at": now,
+		"updated_at":      now,
+		"blacklisted_at": nil,
 	}
 
 	if relation.Status == 1 {
@@ -148,7 +151,6 @@ func (r *blacklistRepositoryImpl) GetBlacklistList(ctx context.Context, userUUID
 	offset := (page - 1) * pageSize
 
 	cacheKey := fmt.Sprintf("user:relation:blacklist:%s", userUUID)
-	offset := (page - 1) * pageSize
 
 	// ==================== 1. 尝试从 Redis ZSet 获取 ====================
 	pipe := r.redisClient.Pipeline()
@@ -175,11 +177,12 @@ func (r *blacklistRepositoryImpl) GetBlacklistList(ctx context.Context, userUUID
 				if !ok || member == "" || member == "__EMPTY__" {
 					continue
 				}
+				blacklistedAt := time.UnixMilli(int64(z.Score))
 				relations = append(relations, &model.UserRelation{
-					UserUuid: userUUID,
-					PeerUuid: member,
-					Status:   1,
-					UpdatedAt: time.UnixMilli(int64(z.Score)),
+					UserUuid:      userUUID,
+					PeerUuid:      member,
+					Status:        1,
+					BlacklistedAt: &blacklistedAt,
 				})
 			}
 
@@ -205,7 +208,7 @@ func (r *blacklistRepositoryImpl) GetBlacklistList(ctx context.Context, userUUID
 
 	var relations []*model.UserRelation
 	if err := query.
-		Order("updated_at DESC, id DESC").
+		Order("blacklisted_at DESC, id DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&relations).
@@ -226,8 +229,12 @@ func (r *blacklistRepositoryImpl) GetBlacklistList(ctx context.Context, userUUID
 				if relation == nil || relation.PeerUuid == "" {
 					continue
 				}
+				blacklistedAt := relation.UpdatedAt
+				if relation.BlacklistedAt != nil {
+					blacklistedAt = *relation.BlacklistedAt
+				}
 				members = append(members, redis.Z{
-					Score:  float64(relation.UpdatedAt.UnixMilli()),
+					Score:  float64(blacklistedAt.UnixMilli()),
 					Member: relation.PeerUuid,
 				})
 			}
@@ -250,7 +257,7 @@ func (r *blacklistRepositoryImpl) GetBlacklistList(ctx context.Context, userUUID
 
 // IsBlocked 检查是否被拉黑
 // 检查 userUUID 是否拉黑了 targetUUID
-// 采用 Cache-Aside Pattern：优先查 Redis Set，未命中则回源 MySQL 并缓存
+// 采用 Cache-Aside Pattern：优先查 Redis ZSet，未命中则回源 MySQL 并缓存
 func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targetUUID string) (bool, error) {
 	cacheKey := fmt.Sprintf("user:relation:blacklist:%s", userUUID)
 
@@ -328,7 +335,11 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 	async.RunSafe(ctx, func(runCtx context.Context) {
 		pipe := r.redisClient.Pipeline()
 		pipe.Del(runCtx, cacheKey)
-		pipe.ZAdd(runCtx, cacheKey, redis.Z{Score: float64(relation.UpdatedAt.UnixMilli()), Member: targetUUID})
+		blacklistedAt := relation.UpdatedAt
+		if relation.BlacklistedAt != nil {
+			blacklistedAt = *relation.BlacklistedAt
+		}
+		pipe.ZAdd(runCtx, cacheKey, redis.Z{Score: float64(blacklistedAt.UnixMilli()), Member: targetUUID})
 		pipe.Expire(runCtx, cacheKey, getRandomExpireTime(24*time.Hour))
 		if _, err := pipe.Exec(runCtx); err != nil {
 			LogRedisError(runCtx, err)
@@ -344,7 +355,7 @@ func (r *blacklistRepositoryImpl) GetBlacklistRelation(ctx context.Context, user
 }
 
 // updateBlacklistCacheAsync 异步更新黑名单缓存（单向）
-// 仅在缓存存在时做增量更新，避免过期后写入不完整 Set
+// 仅在缓存存在时做增量更新，避免过期后写入不完整 ZSet
 func (r *blacklistRepositoryImpl) updateBlacklistCacheAsync(ctx context.Context, userUUID, targetUUID string, blockedAt int64) {
 	if userUUID == "" || targetUUID == "" {
 		return
@@ -372,7 +383,7 @@ func (r *blacklistRepositoryImpl) updateBlacklistCacheAsync(ctx context.Context,
 }
 
 // removeBlacklistCacheAsync 异步移除黑名单缓存（单向）
-// 仅在缓存存在时做增量更新，避免过期后写入不完整 Set
+// 仅在缓存存在时做增量更新，避免过期后写入不完整 ZSet
 func (r *blacklistRepositoryImpl) removeBlacklistCacheAsync(ctx context.Context, userUUID, targetUUID string) {
 	if userUUID == "" || targetUUID == "" {
 		return
