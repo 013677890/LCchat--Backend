@@ -140,3 +140,38 @@ func (h *BlacklistHandler) GetBlacklistList(c *gin.Context) {
 
 	result.Success(c, resp)
 }
+
+// CheckIsBlacklist 判断是否拉黑接口
+// @Summary 判断是否拉黑
+// @Description 判断用户是否在黑名单中
+// @Tags 黑名单接口
+// @Accept json
+// @Produce json
+// @Param request body dto.CheckIsBlacklistRequest true "判断是否拉黑请求"
+// @Success 200 {object} dto.CheckIsBlacklistResponse
+// @Router /api/v1/auth/blacklist/check [post]
+func (h *BlacklistHandler) CheckIsBlacklist(c *gin.Context) {
+	ctx := middleware.NewContextWithGin(c)
+
+	var req dto.CheckIsBlacklistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		result.Fail(c, nil, consts.CodeParamError)
+		return
+	}
+
+	resp, err := h.blacklistService.CheckIsBlacklist(ctx, &req)
+	if err != nil {
+		if consts.IsNonServerError(utils.ExtractErrorCode(err)) {
+			result.Fail(c, nil, utils.ExtractErrorCode(err))
+			return
+		}
+
+		logger.Error(ctx, "判断是否拉黑服务内部错误",
+			logger.ErrorField("error", err),
+		)
+		result.Fail(c, nil, consts.CodeInternalError)
+		return
+	}
+
+	result.Success(c, resp)
+}

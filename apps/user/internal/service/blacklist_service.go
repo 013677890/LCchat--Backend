@@ -196,5 +196,21 @@ func (s *blacklistServiceImpl) GetBlacklistList(ctx context.Context, req *pb.Get
 
 // CheckIsBlacklist 判断是否拉黑
 func (s *blacklistServiceImpl) CheckIsBlacklist(ctx context.Context, req *pb.CheckIsBlacklistRequest) (*pb.CheckIsBlacklistResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "判断是否拉黑功能暂未实现")
+	if req == nil || req.UserUuid == "" || req.TargetUuid == "" {
+		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeParamError))
+	}
+
+	isBlocked, err := s.blacklistRepo.IsBlocked(ctx, req.UserUuid, req.TargetUuid)
+	if err != nil {
+		logger.Error(ctx, "判断是否拉黑失败",
+			logger.String("user_uuid", req.UserUuid),
+			logger.String("target_uuid", req.TargetUuid),
+			logger.ErrorField("error", err),
+		)
+		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	return &pb.CheckIsBlacklistResponse{
+		IsBlacklist: isBlocked,
+	}, nil
 }

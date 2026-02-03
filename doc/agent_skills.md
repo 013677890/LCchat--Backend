@@ -99,6 +99,7 @@ in this project. It is intended for AI agents and new contributors.
 - Models in `model/` map to DB tables.
 - Repository layer in `apps/user/internal/repository` wraps DB/Redis access.
 - Use `WrapDBError` and `WrapRedisError` for consistent error mapping.
+- `model/UserRelation` 关系状态：`status` 0正常 1拉黑(原先为好友) 2删除 3拉黑(原先非好友)，`blacklisted_at` 记录拉黑时间（用于黑名单排序/分页）。
 
 #### 3.11 Protobuf & Validation
 - Protos in `apps/user/pb/*.proto`.
@@ -122,7 +123,7 @@ in this project. It is intended for AI agents and new contributors.
 - `user:qrcode:user:{user_uuid}` / String / 48h / `user_repository` / userUUID -> token
 
 - `user:relation:friend:{user_uuid}` / Hash / 24h±随机抖动; 空值5m / `friend_repository` / 好友元数据(field=peer_uuid,value=json; 空值占位 `__EMPTY__`)
-- `user:relation:blacklist:{user_uuid}` / ZSet / 24h±随机抖动; 空值5m / `blacklist_repository` / 拉黑集合(score=拉黑时间ms, 空值占位 `__EMPTY__`)
+- `user:relation:blacklist:{user_uuid}` / ZSet / 24h±随机抖动; 空值5m / `blacklist_repository` / 拉黑集合(member=target_uuid, score=拉黑时间ms, 空值占位 `__EMPTY__`)
 
 - `user:apply:pending:{target_uuid}` / ZSet / 24h±随机抖动; 空值5m / `apply_repository` / 待处理好友申请 (member=applicant UUID, score=created_at unix, 空值占位 `__EMPTY__`)
 
@@ -252,14 +253,14 @@ The `apps/user/` service currently contains two major domains that should remain
 - `internal/service/auth_service.go` - Authentication (login, register, logout)
 - `internal/service/user_service.go` - User profile management
 - `internal/service/device_service.go` - Device session management
-- `internal/repository/user_repo.go` - User data access
-- `internal/repository/device_repo.go` - Device session storage
+- `internal/repository/user_repository.go` - User data access
+- `internal/repository/device_repository.go` - Device session storage
 
 **Social Domain** (Relationships):
 - `internal/service/friend_service.go` - Friend relationships
 - `internal/service/blacklist_service.go` - Blacklist management
-- `internal/repository/friend_repo.go` - Friend data access
-- `internal/repository/blacklist_repo.go` - Blacklist storage
+- `internal/repository/friend_repository.go` - Friend data access
+- `internal/repository/blacklist_repository.go` - Blacklist storage
 
 #### 8.2 Decoupling Best Practices
 When developing new features:
