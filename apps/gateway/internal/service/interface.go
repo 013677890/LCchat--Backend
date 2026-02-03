@@ -106,6 +106,23 @@ type FriendService interface {
 	GetRelationStatus(ctx context.Context, req *dto.GetRelationStatusRequest) (*dto.GetRelationStatusResponse, error)
 }
 
+// BlacklistService 黑名单服务接口
+// 职责：
+//   - 调用下游用户服务进行黑名单相关操作
+type BlacklistService interface {
+	// AddBlacklist 拉黑用户
+	AddBlacklist(ctx context.Context, req *dto.AddBlacklistRequest) (*dto.AddBlacklistResponse, error)
+
+	// RemoveBlacklist 取消拉黑
+	RemoveBlacklist(ctx context.Context, req *dto.RemoveBlacklistRequest) (*dto.RemoveBlacklistResponse, error)
+
+	// GetBlacklistList 获取黑名单列表
+	GetBlacklistList(ctx context.Context, req *dto.GetBlacklistListRequest) (*dto.GetBlacklistListResponse, error)
+
+	// CheckIsBlacklist 判断是否拉黑
+	CheckIsBlacklist(ctx context.Context, req *dto.CheckIsBlacklistRequest) (*dto.CheckIsBlacklistResponse, error)
+}
+
 // UserService 用户服务接口
 type UserService interface {
 	// GetProfile 获取个人信息

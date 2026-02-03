@@ -896,7 +896,7 @@ func (s *friendServiceImpl) GetRelationStatus(ctx context.Context, req *pb.GetRe
 		resp.IsFriend = true
 		resp.Remark = relation.Remark
 		resp.GroupTag = relation.GroupTag
-	case 1:
+	case 1, 3:
 		resp.Relation = "blacklist"
 		resp.IsBlacklist = true
 	default:

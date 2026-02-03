@@ -3,7 +3,10 @@ package service
 import (
 	"ChatServer/apps/user/internal/repository"
 	pb "ChatServer/apps/user/pb"
+	"ChatServer/consts"
+	"ChatServer/pkg/logger"
 	"context"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +26,53 @@ func NewBlacklistService(blacklistRepo repository.IBlacklistRepository) Blacklis
 
 // AddBlacklist 拉黑用户
 func (s *blacklistServiceImpl) AddBlacklist(ctx context.Context, req *pb.AddBlacklistRequest) error {
-	return status.Error(codes.Unimplemented, "拉黑用户功能暂未实现")
+	// 1. 从context中获取当前用户UUID
+	currentUserUUID, ok := ctx.Value("user_uuid").(string)
+	if !ok || currentUserUUID == "" {
+		logger.Error(ctx, "获取用户UUID失败")
+		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
+	}
+
+	// 2. 参数校验
+	if req == nil || req.TargetUuid == "" {
+		return status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeParamError))
+	}
+
+	// 3. 不能拉黑自己
+	if req.TargetUuid == currentUserUUID {
+		return status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeCannotBlacklistSelf))
+	}
+
+	// 4. 判断是否已在黑名单中
+	isBlocked, err := s.blacklistRepo.IsBlocked(ctx, currentUserUUID, req.TargetUuid)
+	if err != nil {
+		logger.Error(ctx, "检查黑名单失败",
+			logger.String("user_uuid", currentUserUUID),
+			logger.String("target_uuid", req.TargetUuid),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+	if isBlocked {
+		return status.Error(codes.AlreadyExists, strconv.Itoa(consts.CodeAlreadyInBlacklist))
+	}
+
+	// 5. 拉黑用户
+	if err := s.blacklistRepo.AddBlacklist(ctx, currentUserUUID, req.TargetUuid); err != nil {
+		logger.Error(ctx, "拉黑用户失败",
+			logger.String("user_uuid", currentUserUUID),
+			logger.String("target_uuid", req.TargetUuid),
+			logger.ErrorField("error", err),
+		)
+		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
+	}
+
+	logger.Info(ctx, "拉黑用户成功",
+		logger.String("user_uuid", currentUserUUID),
+		logger.String("target_uuid", req.TargetUuid),
+	)
+
+	return nil
 }
 
 // RemoveBlacklist 取消拉黑

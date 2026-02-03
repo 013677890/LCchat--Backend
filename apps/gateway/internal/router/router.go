@@ -13,7 +13,8 @@ import (
 // authHandler: 认证处理器（依赖注入）
 // userHandler: 用户信息处理器（依赖注入）
 // friendHandler: 好友处理器（依赖注入）
-func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler, friendHandler *v1.FriendHandler) *gin.Engine {
+// blacklistHandler: 黑名单处理器（依赖注入）
+func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler, friendHandler *v1.FriendHandler, blacklistHandler *v1.BlacklistHandler) *gin.Engine {
 	r := gin.New()
 
 	// 恢复中间件
@@ -124,6 +125,10 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler, friend
 				friend.GET("/tags", friendHandler.GetTagList)
 				friend.POST("/check", friendHandler.CheckIsFriend)
 				friend.POST("/relation", friendHandler.GetRelationStatus)
+			}
+			blacklist := auth.Group("/blacklist")
+			{
+				blacklist.POST("", blacklistHandler.AddBlacklist)
 			}
 		}
 	}

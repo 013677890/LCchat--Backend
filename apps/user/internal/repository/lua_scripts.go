@@ -84,4 +84,19 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
 end
 return 0
 `
+
+	// luaAddBlacklistIfExists 黑名单写入（仅在 key 存在时增量更新）
+	// KEYS[1]: 黑名单 Set
+	// ARGV[1]: member(target_uuid)
+	// ARGV[2]: 过期时间（秒）
+	// 返回: 1 表示写入成功，0 表示 key 不存在
+	luaAddBlacklistIfExists = `
+if redis.call('EXISTS', KEYS[1]) == 1 then
+	redis.call('SREM', KEYS[1], '__EMPTY__')
+	redis.call('SADD', KEYS[1], ARGV[1])
+	redis.call('EXPIRE', KEYS[1], ARGV[2])
+	return 1
+end
+return 0
+`
 )

@@ -10,6 +10,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // blacklistRepositoryImpl 黑名单数据访问层实现
@@ -25,7 +26,60 @@ func NewBlacklistRepository(db *gorm.DB, redisClient *redis.Client) IBlacklistRe
 
 // AddBlacklist 拉黑用户
 func (r *blacklistRepositoryImpl) AddBlacklist(ctx context.Context, userUUID, targetUUID string) error {
-	return nil // TODO: 拉黑用户
+	now := time.Now()
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// A -> B: 标记为拉黑（status=1/3）
+		// - status=1: 原先为好友（含已删除好友）
+		// - status=3: 原先非好友
+		status := int8(3)
+		var existing model.UserRelation
+		if err := tx.Unscoped().
+			Select("status").
+			Where("user_uuid = ? AND peer_uuid = ?", userUUID, targetUUID).
+			First(&existing).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		} else {
+			switch existing.Status {
+			case 0, 1, 2:
+				status = 1
+			case 3:
+				status = 3
+			default:
+				status = 3
+			}
+		}
+
+		relationAB := &model.UserRelation{
+			UserUuid:  userUUID,
+			PeerUuid:  targetUUID,
+			Status:    status,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "user_uuid"}, {Name: "peer_uuid"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"status":     status,
+				"deleted_at": nil,
+				"updated_at": now,
+			}),
+		}).Create(relationAB).Error; err != nil {
+			return err
+		}
+
+		// B -> A: 不变（保留好友关系，由消息链路查询黑名单拦截）
+		return nil
+	})
+	if err != nil {
+		return WrapDBError(err)
+	}
+
+	// 异步更新黑名单缓存（仅更新当前用户侧）
+	r.updateBlacklistCacheAsync(ctx, userUUID, targetUUID)
+
+	return nil
 }
 
 // RemoveBlacklist 取消拉黑
@@ -80,8 +134,8 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 	// ==================== 2. 缓存未命中，回源查询 MySQL ====================
 	var relation model.UserRelation
 	err = r.db.WithContext(ctx).
-		Where("user_uuid = ? AND peer_uuid = ? AND status = ? AND deleted_at IS NULL",
-			userUUID, targetUUID, 1).
+		Where("user_uuid = ? AND peer_uuid = ? AND status IN ? AND deleted_at IS NULL",
+			userUUID, targetUUID, []int{1, 3}).
 		First(&relation).Error
 
 	if err != nil {
@@ -122,4 +176,60 @@ func (r *blacklistRepositoryImpl) IsBlocked(ctx context.Context, userUUID, targe
 // GetBlacklistRelation 获取拉黑关系
 func (r *blacklistRepositoryImpl) GetBlacklistRelation(ctx context.Context, userUUID, targetUUID string) (*model.UserRelation, error) {
 	return nil, nil // TODO: 获取拉黑关系
+}
+
+// updateBlacklistCacheAsync 异步更新黑名单缓存（单向）
+// 仅在缓存存在时做增量更新，避免过期后写入不完整 Set
+func (r *blacklistRepositoryImpl) updateBlacklistCacheAsync(ctx context.Context, userUUID, targetUUID string) {
+	if userUUID == "" || targetUUID == "" {
+		return
+	}
+
+	cacheKey := fmt.Sprintf("user:relation:blacklist:%s", userUUID)
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		luaScript := redis.NewScript(luaAddBlacklistIfExists)
+		expireSeconds := int(getRandomExpireTime(24 * time.Hour).Seconds())
+		_, err := luaScript.Run(runCtx, r.redisClient,
+			[]string{cacheKey},
+			targetUUID,
+			expireSeconds,
+		).Result()
+
+		if err != nil && err != redis.Nil {
+			if isRedisWrongType(err) {
+				_ = r.redisClient.Del(runCtx, cacheKey).Err()
+				return
+			}
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
+}
+
+// removeFriendCacheAsync 异步删除好友缓存（单向）
+// 仅在缓存存在时做增量更新，避免过期后写入不完整 Hash
+func (r *blacklistRepositoryImpl) removeFriendCacheAsync(ctx context.Context, userUUID, friendUUID string) {
+	if userUUID == "" || friendUUID == "" {
+		return
+	}
+
+	cacheKey := fmt.Sprintf("user:relation:friend:%s", userUUID)
+	async.RunSafe(ctx, func(runCtx context.Context) {
+		luaScript := redis.NewScript(luaRemoveFriendMetaIfExists)
+		placeholderJSON := buildFriendMetaJSON("", "", "", 0)
+		expireSeconds := int(getRandomExpireTime(24 * time.Hour).Seconds())
+		_, err := luaScript.Run(runCtx, r.redisClient,
+			[]string{cacheKey},
+			friendUUID,
+			placeholderJSON,
+			expireSeconds,
+		).Result()
+
+		if err != nil && err != redis.Nil {
+			if isRedisWrongType(err) {
+				_ = r.redisClient.Del(runCtx, cacheKey).Err()
+				return
+			}
+			LogRedisError(runCtx, err)
+		}
+	}, 0)
 }
