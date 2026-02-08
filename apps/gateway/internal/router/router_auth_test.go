@@ -163,10 +163,12 @@ func TestRouterAuthPublicRoutesSuccess(t *testing.T) {
 			body:             `{"account":"a","password":"pass123"}`,
 			needDeviceHeader: true,
 			setup: func(s *fakeRouterAuthService, called *bool) {
-				s.loginFn = func(_ context.Context, req *dto.LoginRequest, deviceID string) (*dto.LoginResponse, error) {
+				s.loginFn = func(ctx context.Context, req *dto.LoginRequest, deviceID string) (*dto.LoginResponse, error) {
 					*called = true
 					require.Equal(t, "a", req.Account)
 					require.Equal(t, "d1", deviceID)
+					require.Equal(t, "d1", util.GetDeviceIDFromContext(ctx))
+					require.Equal(t, "", util.GetUserUUIDFromContext(ctx))
 					return &dto.LoginResponse{}, nil
 				}
 			},
@@ -178,10 +180,12 @@ func TestRouterAuthPublicRoutesSuccess(t *testing.T) {
 			body:             `{"email":"a@test.com","verifyCode":"123456"}`,
 			needDeviceHeader: true,
 			setup: func(s *fakeRouterAuthService, called *bool) {
-				s.loginByCodeFn = func(_ context.Context, req *dto.LoginByCodeRequest, deviceID string) (*dto.LoginByCodeResponse, error) {
+				s.loginByCodeFn = func(ctx context.Context, req *dto.LoginByCodeRequest, deviceID string) (*dto.LoginByCodeResponse, error) {
 					*called = true
 					require.Equal(t, "a@test.com", req.Email)
 					require.Equal(t, "d1", deviceID)
+					require.Equal(t, "d1", util.GetDeviceIDFromContext(ctx))
+					require.Equal(t, "", util.GetUserUUIDFromContext(ctx))
 					return &dto.LoginByCodeResponse{}, nil
 				}
 			},
@@ -231,9 +235,11 @@ func TestRouterAuthPublicRoutesSuccess(t *testing.T) {
 			target: "/api/v1/public/user/refresh-token",
 			body:   `{"uuid":"u1","device_id":"d1","refreshToken":"rtk"}`,
 			setup: func(s *fakeRouterAuthService, called *bool) {
-				s.refreshTokenFn = func(_ context.Context, req *dto.RefreshTokenRequest) (*dto.RefreshTokenResponse, error) {
+				s.refreshTokenFn = func(ctx context.Context, req *dto.RefreshTokenRequest) (*dto.RefreshTokenResponse, error) {
 					*called = true
 					require.Equal(t, "u1", req.UserUUID)
+					require.Equal(t, "u1", util.GetUserUUIDFromContext(ctx))
+					require.Equal(t, "d1", util.GetDeviceIDFromContext(ctx))
 					return &dto.RefreshTokenResponse{}, nil
 				}
 			},
@@ -291,9 +297,11 @@ func TestRouterAuthLogoutAuthorizedSuccess(t *testing.T) {
 
 	called := false
 	r := buildAuthTestRouter(&fakeRouterAuthService{
-		logoutFn: func(_ context.Context, req *dto.LogoutRequest) (*dto.LogoutResponse, error) {
+		logoutFn: func(ctx context.Context, req *dto.LogoutRequest) (*dto.LogoutResponse, error) {
 			called = true
 			require.Equal(t, "d1", req.DeviceID)
+			require.Equal(t, "u1", util.GetUserUUIDFromContext(ctx))
+			require.Equal(t, "d1", util.GetDeviceIDFromContext(ctx))
 			return nil, nil
 		},
 	})
@@ -346,6 +354,16 @@ func TestRouterAuthParamErrors(t *testing.T) {
 			name: "refresh_token_invalid_json",
 			reqBuilder: func(t *testing.T) *http.Request {
 				return newRouterJSONRequest(t, http.MethodPost, "/api/v1/public/user/refresh-token", `{`)
+			},
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeParamError,
+		},
+		{
+			name: "refresh_token_device_header_mismatch",
+			reqBuilder: func(t *testing.T) *http.Request {
+				req := newRouterJSONRequest(t, http.MethodPost, "/api/v1/public/user/refresh-token", `{"uuid":"u1","device_id":"d1","refreshToken":"rtk"}`)
+				req.Header.Set("X-Device-ID", "d2")
+				return req
 			},
 			wantStatus: http.StatusOK,
 			wantCode:   consts.CodeParamError,

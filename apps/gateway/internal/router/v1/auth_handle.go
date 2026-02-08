@@ -6,6 +6,7 @@ import (
 	"ChatServer/apps/gateway/internal/service"
 	"ChatServer/apps/gateway/internal/utils"
 	"ChatServer/consts"
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/result"
 	"strings"
@@ -19,16 +20,11 @@ type AuthHandler struct {
 }
 
 func resolveDeviceID(c *gin.Context) string {
-	if value, exists := c.Get("device_id"); exists {
-		if deviceID, ok := value.(string); ok {
-			trimmed := strings.TrimSpace(deviceID)
-			if trimmed != "" {
-				return trimmed
-			}
-		}
+	if deviceID := ctxmeta.DeviceIDFromGin(c); deviceID != "" {
+		return deviceID
 	}
 
-	return strings.TrimSpace(c.GetHeader("X-Device-ID"))
+	return strings.TrimSpace(c.GetHeader(ctxmeta.HeaderDeviceID))
 }
 
 // NewAuthHandler 创建认证处理器
@@ -65,7 +61,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		result.Fail(c, nil, consts.CodeParamError)
 		return
 	}
-	c.Set("device_id", deviceID)
+	ctxmeta.SetDeviceID(c, deviceID)
 
 	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
 	ctx := middleware.NewContextWithGin(c)
@@ -202,7 +198,7 @@ func (h *AuthHandler) LoginByCode(c *gin.Context) {
 		result.Fail(c, nil, consts.CodeParamError)
 		return
 	}
-	c.Set("device_id", deviceID)
+	ctxmeta.SetDeviceID(c, deviceID)
 
 	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
 	ctx := middleware.NewContextWithGin(c)
@@ -331,14 +327,33 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// 2. 将 user_uuid 和 device_id 写入 gin context
-	c.Set("user_uuid", req.UserUUID)
-	c.Set("device_id", req.DeviceID)
+	req.UserUUID = strings.TrimSpace(req.UserUUID)
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	req.RefreshToken = strings.TrimSpace(req.RefreshToken)
+	if req.UserUUID == "" || req.DeviceID == "" || req.RefreshToken == "" {
+		result.Fail(c, nil, consts.CodeParamError)
+		return
+	}
 
-	// 3. 创建带有用户信息的 context
+	// 2. 若请求头提供了设备 ID，必须与 body 保持一致，避免身份来源混乱。
+	if headerDeviceID := strings.TrimSpace(c.GetHeader(ctxmeta.HeaderDeviceID)); headerDeviceID != "" && headerDeviceID != req.DeviceID {
+		ctx := middleware.NewContextWithGin(c)
+		logger.Warn(ctx, "刷新Token请求设备ID不一致",
+			logger.String("header_device_id", headerDeviceID),
+			logger.String("body_device_id", req.DeviceID),
+		)
+		result.Fail(c, nil, consts.CodeParamError)
+		return
+	}
+
+	// 3. 仅在参数校验通过后将身份信息写入上下文。
+	ctxmeta.SetUserUUID(c, req.UserUUID)
+	ctxmeta.SetDeviceID(c, req.DeviceID)
+
+	// 4. 创建带有用户信息的 context
 	ctx := middleware.NewContextWithGin(c)
 
-	// 4. 调用服务层处理业务逻辑（依赖注入）
+	// 5. 调用服务层处理业务逻辑（依赖注入）
 	resp, err := h.authService.RefreshToken(ctx, &req)
 	if err != nil {
 		// 检查是否为业务错误
@@ -356,7 +371,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// 5. 返回成功响应
+	// 6. 返回成功响应
 	result.Success(c, resp)
 }
 

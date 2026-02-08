@@ -5,6 +5,7 @@ import (
 	pb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/pkg/logger"
+	"ChatServer/pkg/util"
 	"context"
 	"errors"
 	"strconv"
@@ -28,8 +29,8 @@ func NewBlacklistService(blacklistRepo repository.IBlacklistRepository) Blacklis
 // AddBlacklist 拉黑用户
 func (s *blacklistServiceImpl) AddBlacklist(ctx context.Context, req *pb.AddBlacklistRequest) error {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -79,8 +80,8 @@ func (s *blacklistServiceImpl) AddBlacklist(ctx context.Context, req *pb.AddBlac
 // RemoveBlacklist 取消拉黑
 func (s *blacklistServiceImpl) RemoveBlacklist(ctx context.Context, req *pb.RemoveBlacklistRequest) error {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -128,8 +129,8 @@ func (s *blacklistServiceImpl) RemoveBlacklist(ctx context.Context, req *pb.Remo
 // GetBlacklistList 获取黑名单列表
 func (s *blacklistServiceImpl) GetBlacklistList(ctx context.Context, req *pb.GetBlacklistListRequest) (*pb.GetBlacklistListResponse, error) {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}

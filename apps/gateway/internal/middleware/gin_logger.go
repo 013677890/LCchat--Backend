@@ -2,6 +2,7 @@ package middleware
 
 import (
 	//"ChatServer/apps/gateway/internal/middleware"
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/logger"
 	"context"
 	"time"
@@ -12,20 +13,7 @@ import (
 // NewContextWithGin 从 gin.Context 创建包含 trace_id、user_uuid、device_id 的 context.Context
 // 用于将 Gin 上下文中的 trace_id、user_uuid、device_id 传递到日志系统
 func NewContextWithGin(c *gin.Context) context.Context {
-	ctx := c.Request.Context()
-	if traceId, exists := c.Get("trace_id"); exists {
-		ctx = context.WithValue(ctx, "trace_id", traceId)
-	}
-	if userUUID, exists := c.Get("user_uuid"); exists {
-		ctx = context.WithValue(ctx, "user_uuid", userUUID)
-	}
-	if deviceID, exists := c.Get("device_id"); exists {
-		ctx = context.WithValue(ctx, "device_id", deviceID)
-	}
-	if clientIP, exists := c.Get("client_ip"); exists {
-		ctx = context.WithValue(ctx, "client_ip", clientIP.(string))
-	}
-	return ctx
+	return ctxmeta.BuildContextFromGin(c)
 }
 
 // GinLogger 接收 gin 框架默认的日志
@@ -34,10 +22,7 @@ func GinLogger() gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
-		clientIP, exists := c.Get("client_ip")
-		if exists {
-			clientIP = clientIP.(string)
-		}
+		clientIP := ctxmeta.ClientIPFromGin(c)
 		if clientIP == "" {
 			clientIP = c.ClientIP()
 		}
@@ -47,7 +32,7 @@ func GinLogger() gin.HandlerFunc {
 			logger.String("method", c.Request.Method),
 			logger.String("path", path),
 			logger.String("query", query),
-			logger.String("ip", clientIP.(string)),
+			logger.String("ip", clientIP),
 		)
 
 		c.Next()

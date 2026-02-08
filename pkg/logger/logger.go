@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"ChatServer/pkg/ctxmeta"
 	"context"
 	"os"
 	"strings"
@@ -108,104 +109,40 @@ func buildSyncer(paths []string, fallback zapcore.WriteSyncer) zapcore.WriteSync
 	return zapcore.NewMultiWriteSyncer(syncers...)
 }
 
-func Info(ctx context.Context, msg string, fields ...zap.Field) {
+func appendContextFields(ctx context.Context, fields []zap.Field) []zap.Field {
 	if ctx == nil {
-		global.Info(msg, fields...)
-	} else {
-		traceId := ctx.Value("trace_id") //这里获取trace_id, 从gin的上下文中获取
-		userUUID := ctx.Value("user_uuid")
-		deviceID := ctx.Value("device_id")
-		if traceId != nil {
-			fields = append(fields, zap.String("trace_id", traceId.(string)))
-		}
-		if userUUID != nil {
-			fields = append(fields, zap.String("user_uuid", userUUID.(string)))
-		}
-		if deviceID != nil {
-			fields = append(fields, zap.String("device_id", deviceID.(string)))
-		}
-		global.Info(msg, fields...)
+		return fields
 	}
+	if traceID := ctxmeta.TraceID(ctx); traceID != "" {
+		fields = append(fields, zap.String(ctxmeta.KeyTraceID, traceID))
+	}
+	if userUUID := ctxmeta.UserUUID(ctx); userUUID != "" {
+		fields = append(fields, zap.String(ctxmeta.KeyUserUUID, userUUID))
+	}
+	if deviceID := ctxmeta.DeviceID(ctx); deviceID != "" {
+		fields = append(fields, zap.String(ctxmeta.KeyDeviceID, deviceID))
+	}
+	return fields
+}
+
+func Info(ctx context.Context, msg string, fields ...zap.Field) {
+	global.Info(msg, appendContextFields(ctx, fields)...)
 }
 
 func Warn(ctx context.Context, msg string, fields ...zap.Field) {
-	if ctx == nil {
-		global.Warn(msg, fields...)
-	} else {
-		traceId := ctx.Value("trace_id")
-		userUUID := ctx.Value("user_uuid")
-		deviceID := ctx.Value("device_id")
-		if traceId != nil {
-			fields = append(fields, zap.String("trace_id", traceId.(string)))
-		}
-		if userUUID != nil {
-			fields = append(fields, zap.String("user_uuid", userUUID.(string)))
-		}
-		if deviceID != nil {
-			fields = append(fields, zap.String("device_id", deviceID.(string)))
-		}
-		global.Warn(msg, fields...)
-	}
+	global.Warn(msg, appendContextFields(ctx, fields)...)
 }
 
 func Error(ctx context.Context, msg string, fields ...zap.Field) {
-	if ctx == nil {
-		global.Error(msg, fields...)
-	} else {
-		traceId := ctx.Value("trace_id")
-		userUUID := ctx.Value("user_uuid")
-		deviceID := ctx.Value("device_id")
-		if traceId != nil {
-			fields = append(fields, zap.String("trace_id", traceId.(string)))
-		}
-		if userUUID != nil {
-			fields = append(fields, zap.String("user_uuid", userUUID.(string)))
-		}
-		if deviceID != nil {
-			fields = append(fields, zap.String("device_id", deviceID.(string)))
-		}
-		global.Error(msg, fields...)
-	}
+	global.Error(msg, appendContextFields(ctx, fields)...)
 }
 
 func Fatal(ctx context.Context, msg string, fields ...zap.Field) {
-	if ctx == nil {
-		global.Fatal(msg, fields...)
-	} else {
-		traceId := ctx.Value("trace_id")
-		userUUID := ctx.Value("user_uuid")
-		deviceID := ctx.Value("device_id")
-		if traceId != nil {
-			fields = append(fields, zap.String("trace_id", traceId.(string)))
-		}
-		if userUUID != nil {
-			fields = append(fields, zap.String("user_uuid", userUUID.(string)))
-		}
-		if deviceID != nil {
-			fields = append(fields, zap.String("device_id", deviceID.(string)))
-		}
-		global.Fatal(msg, fields...)
-	}
+	global.Fatal(msg, appendContextFields(ctx, fields)...)
 }
 
 func Debug(ctx context.Context, msg string, fields ...zap.Field) {
-	if ctx == nil {
-		global.Debug(msg, fields...)
-	} else {
-		traceId := ctx.Value("trace_id")
-		userUUID := ctx.Value("user_uuid")
-		deviceID := ctx.Value("device_id")
-		if traceId != nil {
-			fields = append(fields, zap.String("trace_id", traceId.(string)))
-		}
-		if userUUID != nil {
-			fields = append(fields, zap.String("user_uuid", userUUID.(string)))
-		}
-		if deviceID != nil {
-			fields = append(fields, zap.String("device_id", deviceID.(string)))
-		}
-		global.Debug(msg, fields...)
-	}
+	global.Debug(msg, appendContextFields(ctx, fields)...)
 }
 
 // ========== Field 辅助函数封装 ==========

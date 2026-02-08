@@ -2,7 +2,7 @@
 package middleware
 
 import (
-	"context"
+	"ChatServer/pkg/ctxmeta"
 	"net"
 	"strings"
 
@@ -12,7 +12,7 @@ import (
 const (
 	headerXRealIP       = "X-Real-IP"
 	headerXForwardedFor = "X-Forwarded-For"
-	headerClientIP     = "Client-IP"      // 或 X-Client-IP
+	headerClientIP      = "Client-IP" // 或 X-Client-IP
 	headerXClientIP     = "X-Client-IP"
 )
 
@@ -56,12 +56,12 @@ func GetClientIPSafe(c *gin.Context) (string, bool) {
 	if ip == "" {
 		return "", false
 	}
-	
+
 	// 验证 IP 格式
 	if net.ParseIP(ip) == nil {
 		return "", false
 	}
-	
+
 	return ip, true
 }
 
@@ -77,25 +77,19 @@ func GetClientIPOrDefault(c *gin.Context, defaultIP string) string {
 func ClientIPMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := GetClientIP(c)
-		
+
 		// 注入到 Gin Context
-		c.Set("client_ip", ip)
-		
+		ctxmeta.SetClientIP(c, ip)
+
 		// 注入到 request context（传递给下游）
-		ctx := c.Request.Context()
-		ctx = context.WithValue(ctx, "client_ip", ip)
+		ctx := ctxmeta.WithClientIP(c.Request.Context(), ip)
 		*c.Request = *c.Request.WithContext(ctx)
-		
+
 		c.Next()
 	}
 }
 
 // 从 Gin Context 获取 IP（便捷方法）
 func ClientIPFromGinContext(c *gin.Context) string {
-	if ip, exists := c.Get("client_ip"); exists {
-		if ipStr, ok := ip.(string); ok {
-			return ipStr
-		}
-	}
-	return ""
+	return ctxmeta.ClientIPFromGin(c)
 }

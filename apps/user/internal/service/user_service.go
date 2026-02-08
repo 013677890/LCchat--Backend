@@ -48,8 +48,8 @@ func NewUserService(userRepo repository.IUserRepository, authRepo repository.IAu
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) GetProfile(ctx context.Context, req *pb.GetProfileRequest) (*pb.GetProfileResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -123,8 +123,8 @@ func (s *userServiceImpl) GetOtherProfile(ctx context.Context, req *pb.GetOtherP
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) SearchUser(ctx context.Context, req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -206,8 +206,8 @@ func (s *userServiceImpl) SearchUser(ctx context.Context, req *pb.SearchUserRequ
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) UpdateProfile(ctx context.Context, req *pb.UpdateProfileRequest) (*pb.UpdateProfileResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -286,8 +286,8 @@ func (s *userServiceImpl) UpdateProfile(ctx context.Context, req *pb.UpdateProfi
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) UploadAvatar(ctx context.Context, req *pb.UploadAvatarRequest) (*pb.UploadAvatarResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -339,8 +339,8 @@ func (s *userServiceImpl) UploadAvatar(ctx context.Context, req *pb.UploadAvatar
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) ChangePassword(ctx context.Context, req *pb.ChangePasswordRequest) error {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -428,8 +428,8 @@ func (s *userServiceImpl) ChangePassword(ctx context.Context, req *pb.ChangePass
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) ChangeEmail(ctx context.Context, req *pb.ChangeEmailRequest) (*pb.ChangeEmailResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -547,8 +547,8 @@ func (s *userServiceImpl) ChangeTelephone(ctx context.Context, req *pb.ChangeTel
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) GetQRCode(ctx context.Context, req *pb.GetQRCodeRequest) (*pb.GetQRCodeResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -621,8 +621,8 @@ func (s *userServiceImpl) GetQRCode(ctx context.Context, req *pb.GetQRCodeReques
 //   - codes.Internal: 系统内部错误
 func (s *userServiceImpl) DeleteAccount(ctx context.Context, req *pb.DeleteAccountRequest) (*pb.DeleteAccountResponse, error) {
 	// 1. 从context中获取用户UUID
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}

@@ -1,11 +1,13 @@
 package util
 
 import (
+	"ChatServer/pkg/ctxmeta"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-const HeaderXRequestID = "X-Request-ID"
+const HeaderXRequestID = ctxmeta.HeaderRequestID
 
 // TraceLogger 追踪中间件，生成或获取 trace_id 并存入 Gin 上下文
 func TraceLogger() gin.HandlerFunc {
@@ -19,7 +21,7 @@ func TraceLogger() gin.HandlerFunc {
 		}
 
 		// 3. 【关键】放入 Gin 的上下文，供后续 Controller 使用
-		c.Set("trace_id", traceId)
+		ctxmeta.SetTraceID(c, traceId)
 
 		// 4. 【关键】放入响应头，方便前端/客户端拿着 ID 来找你报修
 		c.Header(HeaderXRequestID, traceId)

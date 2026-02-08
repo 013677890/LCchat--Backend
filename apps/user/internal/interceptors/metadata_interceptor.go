@@ -1,7 +1,7 @@
 package interceptors
 
 import (
-	"ChatServer/pkg/util"
+	"ChatServer/pkg/ctxmeta"
 	"context"
 
 	"google.golang.org/grpc"
@@ -12,25 +12,24 @@ import (
 func MetadataUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			if traceID := firstValue(md.Get("trace_id")); traceID != "" {
-				ctx = context.WithValue(ctx, "trace_id", traceID)
+			if traceID := firstValue(md.Get(ctxmeta.MetadataTraceID)); traceID != "" {
+				ctx = ctxmeta.WithTraceID(ctx, traceID)
 			}
-			if userUUID := firstValue(md.Get("user_uuid")); userUUID != "" {
-				ctx = context.WithValue(ctx, util.ContextKeyUserUUID, userUUID)
+			if userUUID := firstValue(md.Get(ctxmeta.MetadataUserUUID)); userUUID != "" {
+				ctx = ctxmeta.WithUserUUID(ctx, userUUID)
 			}
-			if deviceID := firstValue(md.Get("device_id")); deviceID != "" {
-				ctx = context.WithValue(ctx, util.ContextKeyDeviceID, deviceID)
+			if deviceID := firstValue(md.Get(ctxmeta.MetadataDeviceID)); deviceID != "" {
+				ctx = ctxmeta.WithDeviceID(ctx, deviceID)
 			}
-			clientIP := firstValue(md.Get("x-real-ip"))
+			clientIP := firstValue(md.Get(ctxmeta.MetadataXRealIP))
 			if clientIP == "" {
-				clientIP = firstValue(md.Get("x-forwarded-for"))
+				clientIP = firstValue(md.Get(ctxmeta.MetadataXForwardedFor))
 			}
 			if clientIP == "" {
-				clientIP = firstValue(md.Get("client_ip"))
+				clientIP = firstValue(md.Get(ctxmeta.MetadataClientIP))
 			}
 			if clientIP != "" {
-				ctx = context.WithValue(ctx, util.ContextKeyClientIP, clientIP)
-				ctx = context.WithValue(ctx, "ip", clientIP)
+				ctx = ctxmeta.WithClientIP(ctx, clientIP)
 			}
 		}
 		return handler(ctx, req)

@@ -1,6 +1,7 @@
 package mq
 
 import (
+	"ChatServer/pkg/ctxmeta"
 	"context"
 	"time"
 )
@@ -187,13 +188,13 @@ func BuildLuaTask(script string, keys []string, args ...interface{}) RedisTask {
 
 // WithContext 为任务添加上下文信息
 func (t RedisTask) WithContext(ctx context.Context) RedisTask {
-	if traceID, ok := ctx.Value("trace_id").(string); ok {
+	if traceID := ctxmeta.TraceID(ctx); traceID != "" {
 		t.TraceID = traceID
 	}
-	if userUUID, ok := ctx.Value("user_uuid").(string); ok {
+	if userUUID := ctxmeta.UserUUID(ctx); userUUID != "" {
 		t.UserUUID = userUUID
 	}
-	if deviceID, ok := ctx.Value("device_id").(string); ok {
+	if deviceID := ctxmeta.DeviceID(ctx); deviceID != "" {
 		t.DeviceID = deviceID
 	}
 	return t

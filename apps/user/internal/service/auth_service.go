@@ -7,6 +7,7 @@ import (
 	pb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/model"
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/util"
 	"context"
@@ -205,7 +206,7 @@ func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.
 	}
 
 	// 3. 将用户uuid写入context
-	ctx = context.WithValue(ctx, "user_uuid", user.Uuid)
+	ctx = ctxmeta.WithUserUUID(ctx, user.Uuid)
 
 	// 4. 校验密码
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
@@ -372,7 +373,7 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 	}
 
 	// 5. 将用户uuid写入context
-	ctx = context.WithValue(ctx, "user_uuid", user.Uuid)
+	ctx = ctxmeta.WithUserUUID(ctx, user.Uuid)
 
 	// 6. 从 context 中获取客户端 IP
 	clientIP := util.GetClientIPFromContext(ctx)
@@ -579,14 +580,14 @@ func (s *authServiceImpl) RefreshToken(ctx context.Context, req *pb.RefreshToken
 	logger.Info(ctx, "刷新Token请求")
 
 	// 1. 从 context 中获取 user_uuid 和 device_id
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Warn(ctx, "从 context 中获取 user_uuid 失败")
 		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeInvalidToken))
 	}
 
-	deviceID, ok := ctx.Value("device_id").(string)
-	if !ok || deviceID == "" {
+	deviceID := util.GetDeviceIDFromContext(ctx)
+	if deviceID == "" {
 		logger.Warn(ctx, "从 context 中获取 device_id 失败")
 		return nil, status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeInvalidToken))
 	}
@@ -674,8 +675,8 @@ func (s *authServiceImpl) Logout(ctx context.Context, req *pb.LogoutRequest) err
 	)
 
 	// 1. 从 context 中获取 user_uuid
-	userUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || userUUID == "" {
+	userUUID := util.GetUserUUIDFromContext(ctx)
+	if userUUID == "" {
 		logger.Error(ctx, "从 context 中获取 user_uuid 失败")
 		return status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
 	}

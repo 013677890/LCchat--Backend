@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/util"
 	"net/http"
 	"strings"
@@ -51,8 +52,8 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		}
 
 		// 4. 将用户信息存入 Context，供后续 Handler 使用
-		c.Set("user_uuid", claims.UserUUID)
-		c.Set("device_id", claims.DeviceID)
+		ctxmeta.SetUserUUID(c, claims.UserUUID)
+		ctxmeta.SetDeviceID(c, claims.DeviceID)
 		updateDeviceActive(claims.UserUUID, claims.DeviceID)
 
 		c.Next()
@@ -61,20 +62,12 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 
 // GetUserUUID 从 Context 中获取当前登录用户的 UUID
 func GetUserUUID(c *gin.Context) (string, bool) {
-	userUUID, exists := c.Get("user_uuid")
-	if !exists {
-		return "", false
-	}
-	uuid, ok := userUUID.(string)
-	return uuid, ok
+	userUUID := ctxmeta.UserUUIDFromGin(c)
+	return userUUID, userUUID != ""
 }
 
 // GetDeviceID 从 Context 中获取当前设备 ID
 func GetDeviceID(c *gin.Context) (string, bool) {
-	deviceID, exists := c.Get("device_id")
-	if !exists {
-		return "", false
-	}
-	id, ok := deviceID.(string)
-	return id, ok
+	deviceID := ctxmeta.DeviceIDFromGin(c)
+	return deviceID, deviceID != ""
 }

@@ -6,6 +6,7 @@ import (
 	"ChatServer/consts"
 	"ChatServer/model"
 	"ChatServer/pkg/logger"
+	"ChatServer/pkg/util"
 	"context"
 	"errors"
 	"strconv"
@@ -53,8 +54,8 @@ func NewFriendService(
 //   - codes.Internal: 系统内部错误
 func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFriendApplyRequest) (*pb.SendFriendApplyResponse, error) {
 	// 1. 从context中获取当前用户UUID（申请人）
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -181,8 +182,8 @@ func (s *friendServiceImpl) SendFriendApply(ctx context.Context, req *pb.SendFri
 // GetFriendApplyList 获取好友申请列表
 func (s *friendServiceImpl) GetFriendApplyList(ctx context.Context, req *pb.GetFriendApplyListRequest) (*pb.GetFriendApplyListResponse, error) {
 	// 从上下文获取当前用户
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -288,8 +289,8 @@ func (s *friendServiceImpl) GetFriendApplyList(ctx context.Context, req *pb.GetF
 // GetSentApplyList 获取发出的申请列表
 func (s *friendServiceImpl) GetSentApplyList(ctx context.Context, req *pb.GetSentApplyListRequest) (*pb.GetSentApplyListResponse, error) {
 	// 从上下文获取当前用户（申请人）
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -373,8 +374,8 @@ func (s *friendServiceImpl) GetSentApplyList(ctx context.Context, req *pb.GetSen
 //     拒绝：调用 UpdateStatus（CAS幂等）
 func (s *friendServiceImpl) HandleFriendApply(ctx context.Context, req *pb.HandleFriendApplyRequest) error {
 	// 1. 从context获取当前用户UUID（处理人）
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -459,8 +460,8 @@ func (s *friendServiceImpl) HandleFriendApply(ctx context.Context, req *pb.Handl
 // GetUnreadApplyCount 获取未读申请数量
 func (s *friendServiceImpl) GetUnreadApplyCount(ctx context.Context, req *pb.GetUnreadApplyCountRequest) (*pb.GetUnreadApplyCountResponse, error) {
 	// 1. 获取当前用户 UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -483,8 +484,8 @@ func (s *friendServiceImpl) GetUnreadApplyCount(ctx context.Context, req *pb.Get
 // MarkApplyAsRead 标记申请已读
 func (s *friendServiceImpl) MarkApplyAsRead(ctx context.Context, req *pb.MarkApplyAsReadRequest) error {
 	// 1. 获取当前用户 UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -523,8 +524,8 @@ func (s *friendServiceImpl) MarkApplyAsRead(ctx context.Context, req *pb.MarkApp
 // GetFriendList 获取好友列表
 func (s *friendServiceImpl) GetFriendList(ctx context.Context, req *pb.GetFriendListRequest) (*pb.GetFriendListResponse, error) {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -600,8 +601,8 @@ func (s *friendServiceImpl) SyncFriendList(ctx context.Context, req *pb.SyncFrie
 	const syncVersionRollbackMs int64 = 2000 // 回退 2s，避免事务时间差漏数据
 
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -706,8 +707,8 @@ func (s *friendServiceImpl) SyncFriendList(ctx context.Context, req *pb.SyncFrie
 // DeleteFriend 删除好友
 func (s *friendServiceImpl) DeleteFriend(ctx context.Context, req *pb.DeleteFriendRequest) error {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -741,8 +742,8 @@ func (s *friendServiceImpl) DeleteFriend(ctx context.Context, req *pb.DeleteFrie
 // SetFriendRemark 设置好友备注
 func (s *friendServiceImpl) SetFriendRemark(ctx context.Context, req *pb.SetFriendRemarkRequest) error {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -776,8 +777,8 @@ func (s *friendServiceImpl) SetFriendRemark(ctx context.Context, req *pb.SetFrie
 // SetFriendTag 设置好友标签
 func (s *friendServiceImpl) SetFriendTag(ctx context.Context, req *pb.SetFriendTagRequest) error {
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return status.Error(codes.Unauthenticated, strconv.Itoa(consts.CodeUnauthorized))
 	}

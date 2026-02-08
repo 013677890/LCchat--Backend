@@ -9,6 +9,7 @@ import (
 	"ChatServer/config"
 	"ChatServer/consts/redisKey"
 	"ChatServer/pkg/async"
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/deviceactive"
 	"ChatServer/pkg/logger"
 	pkgminio "ChatServer/pkg/minio"
@@ -28,7 +29,7 @@ func main() {
 	ctx := context.Background()
 	//设置trace_id 为 0
 	traceId := "0"
-	ctx = context.WithValue(ctx, "trace_id", traceId)
+	ctx = ctxmeta.WithTraceID(ctx, traceId)
 
 	// 1. 初始化日志（必须先于任何 logger 调用）
 	cfg := config.DefaultLoggerConfig()
@@ -61,23 +62,7 @@ func main() {
 
 	// 2.5 初始化 Async 协程池
 	async.SetContextPropagator(func(parent context.Context) context.Context {
-		newCtx := context.Background()
-		if parent == nil {
-			return newCtx
-		}
-		if v := parent.Value("trace_id"); v != nil {
-			newCtx = context.WithValue(newCtx, "trace_id", v)
-		}
-		if v := parent.Value("user_uuid"); v != nil {
-			newCtx = context.WithValue(newCtx, "user_uuid", v)
-		}
-		if v := parent.Value("device_id"); v != nil {
-			newCtx = context.WithValue(newCtx, "device_id", v)
-		}
-		if v := parent.Value("ip"); v != nil {
-			newCtx = context.WithValue(newCtx, "ip", v)
-		}
-		return newCtx
+		return ctxmeta.CopyKnownFromParent(parent)
 	})
 
 	asyncCfg := config.DefaultAsyncConfig()

@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"ChatServer/pkg/ctxmeta"
 	"context"
 
 	"go.uber.org/zap"
@@ -41,14 +42,14 @@ func convertFieldsToZap(ctx context.Context, fields map[string]interface{}) []za
 	zapFields := make([]zap.Field, 0, len(fields)+3)
 
 	// 从 context 中提取标准字段
-	if traceID, ok := ctx.Value("trace_id").(string); ok && traceID != "" {
-		zapFields = append(zapFields, zap.String("trace_id", traceID))
+	if traceID := ctxmeta.TraceID(ctx); traceID != "" {
+		zapFields = append(zapFields, zap.String(ctxmeta.KeyTraceID, traceID))
 	}
-	if userUUID, ok := ctx.Value("user_uuid").(string); ok && userUUID != "" {
-		zapFields = append(zapFields, zap.String("user_uuid", userUUID))
+	if userUUID := ctxmeta.UserUUID(ctx); userUUID != "" {
+		zapFields = append(zapFields, zap.String(ctxmeta.KeyUserUUID, userUUID))
 	}
-	if deviceID, ok := ctx.Value("device_id").(string); ok && deviceID != "" {
-		zapFields = append(zapFields, zap.String("device_id", deviceID))
+	if deviceID := ctxmeta.DeviceID(ctx); deviceID != "" {
+		zapFields = append(zapFields, zap.String(ctxmeta.KeyDeviceID, deviceID))
 	}
 
 	// 添加自定义字段

@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"ChatServer/pkg/util"
+	"ChatServer/pkg/ctxmeta"
 	"context"
 
 	"google.golang.org/grpc"
@@ -18,18 +18,18 @@ func GRPCMetadataInterceptor() grpc.UnaryClientInterceptor {
 			md = md.Copy()
 		}
 
-		if traceID, ok := ctx.Value("trace_id").(string); ok && traceID != "" {
-			md.Set("trace_id", traceID)
+		if traceID := ctxmeta.TraceID(ctx); traceID != "" {
+			md.Set(ctxmeta.MetadataTraceID, traceID)
 		}
-		if userUUID, ok := ctx.Value(util.ContextKeyUserUUID).(string); ok && userUUID != "" {
-			md.Set("user_uuid", userUUID)
+		if userUUID := ctxmeta.UserUUID(ctx); userUUID != "" {
+			md.Set(ctxmeta.MetadataUserUUID, userUUID)
 		}
-		if deviceID, ok := ctx.Value(util.ContextKeyDeviceID).(string); ok && deviceID != "" {
-			md.Set("device_id", deviceID)
+		if deviceID := ctxmeta.DeviceID(ctx); deviceID != "" {
+			md.Set(ctxmeta.MetadataDeviceID, deviceID)
 		}
-		if clientIP, ok := ctx.Value(util.ContextKeyClientIP).(string); ok && clientIP != "" {
-			md.Set("x-real-ip", clientIP)
-			md.Set("client_ip", clientIP)
+		if clientIP := ctxmeta.ClientIP(ctx); clientIP != "" {
+			md.Set(ctxmeta.MetadataXRealIP, clientIP)
+			md.Set(ctxmeta.MetadataClientIP, clientIP)
 		}
 
 		ctx = metadata.NewOutgoingContext(ctx, md)

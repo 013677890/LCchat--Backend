@@ -8,6 +8,7 @@ import (
 	"ChatServer/consts"
 	"ChatServer/pkg/async"
 	"ChatServer/pkg/logger"
+	"ChatServer/pkg/util"
 	"context"
 	"errors"
 	"strconv"
@@ -70,8 +71,8 @@ func (s *UserServiceImpl) GetOtherProfile(ctx context.Context, req *dto.GetOther
 	startTime := time.Now()
 
 	// 1. 从context中获取当前用户UUID
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if !ok || currentUserUUID == "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID == "" {
 		logger.Error(ctx, "获取用户UUID失败")
 		return nil, errors.New(strconv.Itoa(consts.CodeUnauthorized))
 	}
@@ -196,8 +197,8 @@ func (s *UserServiceImpl) SearchUser(ctx context.Context, req *dto.SearchUserReq
 	}
 
 	// 3. 尝试补充好友关系（批量判断，失败则降级不填）
-	currentUserUUID, ok := ctx.Value("user_uuid").(string)
-	if ok && currentUserUUID != "" {
+	currentUserUUID := util.GetUserUUIDFromContext(ctx)
+	if currentUserUUID != "" {
 		peerUUIDs := make([]string, 0, len(resp.Items))
 		seen := make(map[string]struct{}, len(resp.Items))
 		for _, item := range resp.Items {

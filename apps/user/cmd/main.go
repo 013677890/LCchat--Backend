@@ -17,6 +17,7 @@ import (
 	userpb "ChatServer/apps/user/pb"
 	"ChatServer/config"
 	"ChatServer/pkg/async"
+	"ChatServer/pkg/ctxmeta"
 	"ChatServer/pkg/kafka"
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/mysql"
@@ -45,23 +46,7 @@ func main() {
 
 	// 1.5 初始化 Async 协程池
 	async.SetContextPropagator(func(parent context.Context) context.Context {
-		newCtx := context.Background()
-		if parent == nil {
-			return newCtx
-		}
-		if v := parent.Value("trace_id"); v != nil {
-			newCtx = context.WithValue(newCtx, "trace_id", v)
-		}
-		if v := parent.Value("user_uuid"); v != nil {
-			newCtx = context.WithValue(newCtx, "user_uuid", v)
-		}
-		if v := parent.Value("device_id"); v != nil {
-			newCtx = context.WithValue(newCtx, "device_id", v)
-		}
-		if v := parent.Value("ip"); v != nil {
-			newCtx = context.WithValue(newCtx, "ip", v)
-		}
-		return newCtx
+		return ctxmeta.CopyKnownFromParent(parent)
 	})
 
 	asyncCfg := config.DefaultAsyncConfig()
