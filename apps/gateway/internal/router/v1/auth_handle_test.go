@@ -159,6 +159,24 @@ func TestAuthHandlerLogin(t *testing.T) {
 			wantCalled: true,
 		},
 		{
+			name:     "success_with_header_device_id_context_contains_device_id",
+			body:     `{"account":"a","password":"pass123","deviceInfo":{"deviceName":"ios","platform":"ios"}}`,
+			headerID: "d1",
+			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
+				s.loginFn = func(ctx context.Context, req *dto.LoginRequest, deviceID string) (*dto.LoginResponse, error) {
+					*called = true
+					require.Equal(t, "a", req.Account)
+					require.Equal(t, "pass123", req.Password)
+					require.Equal(t, "d1", deviceID)
+					require.Equal(t, "d1", ctx.Value("device_id"))
+					return &dto.LoginResponse{}, nil
+				}
+			},
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeSuccess,
+			wantCalled: true,
+		},
+		{
 			name:     "business_error_passthrough",
 			body:     `{"account":"a","password":"pass123"}`,
 			headerID: "d1",
@@ -248,6 +266,24 @@ func TestAuthHandlerLoginByCode(t *testing.T) {
 					require.Equal(t, "a@test.com", req.Email)
 					require.Equal(t, "123456", req.VerifyCode)
 					require.Equal(t, "d2", deviceID)
+					return &dto.LoginByCodeResponse{}, nil
+				}
+			},
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeSuccess,
+			wantCalled: true,
+		},
+		{
+			name:     "success_with_header_device_id_context_contains_device_id",
+			body:     `{"email":"a@test.com","verifyCode":"123456","deviceInfo":{"deviceName":"ios","platform":"ios"}}`,
+			headerID: "d2",
+			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
+				s.loginByCodeFn = func(ctx context.Context, req *dto.LoginByCodeRequest, deviceID string) (*dto.LoginByCodeResponse, error) {
+					*called = true
+					require.Equal(t, "a@test.com", req.Email)
+					require.Equal(t, "123456", req.VerifyCode)
+					require.Equal(t, "d2", deviceID)
+					require.Equal(t, "d2", ctx.Value("device_id"))
 					return &dto.LoginByCodeResponse{}, nil
 				}
 			},

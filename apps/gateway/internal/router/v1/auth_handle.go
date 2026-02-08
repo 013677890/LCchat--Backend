@@ -35,8 +35,6 @@ func NewAuthHandler(authService service.AuthService) *AuthHandler {
 // @Success 200 {object} dto.LoginResponse
 // @Router /api/v1/public/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
-	ctx := middleware.NewContextWithGin(c)
-
 	// 1. 绑定请求数据
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,6 +50,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		deviceId = c.GetHeader("X-Device-ID")
 		//如果为空直接返回
 		if deviceId == "" {
+			ctx := middleware.NewContextWithGin(c)
 			logger.Error(ctx, "请求头中无设备ID",
 				logger.String("device_id", deviceId.(string)),
 			)
@@ -62,7 +61,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.Set("device_id", deviceId)
 	}
 
-	// 3. 调用服务层处理业务逻辑（依赖注入）
+	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
+	ctx := middleware.NewContextWithGin(c)
+
+	// 4. 调用服务层处理业务逻辑（依赖注入）
 	loginResp, err := h.authService.Login(ctx, &req, deviceId.(string))
 	if err != nil {
 		// 检查是否为业务错误
@@ -80,7 +82,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 5. 返回成功响应
+	// 6. 返回成功响应
 	result.Success(c, loginResp)
 }
 
@@ -178,8 +180,6 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 // @Success 200 {object} dto.LoginByCodeResponse
 // @Router /api/v1/public/login-by-code [post]
 func (h *AuthHandler) LoginByCode(c *gin.Context) {
-	ctx := middleware.NewContextWithGin(c)
-
 	// 1. 绑定请求数据
 	var req dto.LoginByCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -195,6 +195,7 @@ func (h *AuthHandler) LoginByCode(c *gin.Context) {
 		deviceId = c.GetHeader("X-Device-ID")
 		//如果为空直接返回
 		if deviceId == "" {
+			ctx := middleware.NewContextWithGin(c)
 			logger.Error(ctx, "请求头中无设备ID",
 				logger.String("device_id", deviceId.(string)),
 			)
@@ -205,7 +206,10 @@ func (h *AuthHandler) LoginByCode(c *gin.Context) {
 		c.Set("device_id", deviceId)
 	}
 
-	// 3. 调用服务层处理业务逻辑（依赖注入）
+	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
+	ctx := middleware.NewContextWithGin(c)
+
+	// 4. 调用服务层处理业务逻辑（依赖注入）
 	loginResp, err := h.authService.LoginByCode(ctx, &req, deviceId.(string))
 	if err != nil {
 		// 检查是否为业务错误
@@ -223,7 +227,7 @@ func (h *AuthHandler) LoginByCode(c *gin.Context) {
 		return
 	}
 
-	// 4. 返回成功响应
+	// 5. 返回成功响应
 	result.Success(c, loginResp)
 }
 
