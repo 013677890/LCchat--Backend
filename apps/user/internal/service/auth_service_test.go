@@ -365,6 +365,24 @@ func TestUserAuthServiceLogin(t *testing.T) {
 		requireAuthStatusCode(t, err, codes.Unauthenticated, consts.CodePasswordError)
 	})
 
+	t.Run("missing_device_id", func(t *testing.T) {
+		repo := &fakeAuthRepo{
+			getByEmailFn: func(_ context.Context, _ string) (*model.UserInfo, error) {
+				u := *validUser
+				return &u, nil
+			},
+		}
+		svc := NewAuthService(repo, &fakeAuthDeviceRepo{})
+
+		resp, err := svc.Login(context.Background(), &pb.LoginRequest{
+			Account:    "a@test.com",
+			Password:   "pass123",
+			DeviceInfo: &pb.DeviceInfo{DeviceName: "iphone"},
+		})
+		require.Nil(t, resp)
+		requireAuthStatusCode(t, err, codes.InvalidArgument, consts.CodeParamError)
+	})
+
 	t.Run("store_access_token_failed", func(t *testing.T) {
 		repo := &fakeAuthRepo{
 			getByEmailFn: func(_ context.Context, _ string) (*model.UserInfo, error) {
@@ -516,8 +534,9 @@ func TestUserAuthServiceLoginByCode(t *testing.T) {
 			},
 		}
 		svc := NewAuthService(repo, &fakeAuthDeviceRepo{})
+		ctx := context.WithValue(context.Background(), "device_id", "d1")
 
-		resp, err := svc.LoginByCode(context.Background(), &pb.LoginByCodeRequest{
+		resp, err := svc.LoginByCode(ctx, &pb.LoginByCodeRequest{
 			Email:      "a@test.com",
 			VerifyCode: "123456",
 		})
@@ -537,13 +556,32 @@ func TestUserAuthServiceLoginByCode(t *testing.T) {
 			},
 		}
 		svc := NewAuthService(repo, &fakeAuthDeviceRepo{})
+		ctx := context.WithValue(context.Background(), "device_id", "d1")
 
-		resp, err := svc.LoginByCode(context.Background(), &pb.LoginByCodeRequest{
+		resp, err := svc.LoginByCode(ctx, &pb.LoginByCodeRequest{
 			Email:      "a@test.com",
 			VerifyCode: "123456",
 		})
 		require.Nil(t, resp)
 		requireAuthStatusCode(t, err, codes.Unauthenticated, consts.CodeVerifyCodeError)
+	})
+
+	t.Run("missing_device_id", func(t *testing.T) {
+		repo := &fakeAuthRepo{
+			getByEmailFn: func(_ context.Context, _ string) (*model.UserInfo, error) {
+				u := *validUser
+				return &u, nil
+			},
+		}
+		svc := NewAuthService(repo, &fakeAuthDeviceRepo{})
+
+		resp, err := svc.LoginByCode(context.Background(), &pb.LoginByCodeRequest{
+			Email:      "a@test.com",
+			VerifyCode: "123456",
+			DeviceInfo: &pb.DeviceInfo{DeviceName: "iphone"},
+		})
+		require.Nil(t, resp)
+		requireAuthStatusCode(t, err, codes.InvalidArgument, consts.CodeParamError)
 	})
 
 	t.Run("store_access_token_failed", func(t *testing.T) {

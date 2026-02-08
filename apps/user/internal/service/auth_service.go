@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -47,6 +48,15 @@ func buildDeviceUserAgent(deviceInfo *pb.DeviceInfo) string {
 		}
 	}
 	return result
+}
+
+func getRequiredDeviceID(ctx context.Context) (string, error) {
+	deviceID := strings.TrimSpace(util.GetDeviceIDFromContext(ctx))
+	if deviceID == "" {
+		logger.Warn(ctx, "DeviceID not found in context")
+		return "", status.Error(codes.InvalidArgument, strconv.Itoa(consts.CodeParamError))
+	}
+	return deviceID, nil
 }
 
 // authServiceImpl 认证服务实现
@@ -204,13 +214,9 @@ func (s *authServiceImpl) Login(ctx context.Context, req *pb.LoginRequest) (*pb.
 	}
 
 	// 5. 从 context 中获取设备 ID 和客户端 IP
-	deviceID := util.GetDeviceIDFromContext(ctx)
-	if deviceID == "" {
-		// 如果没有从 context 中获取到，使用设备名称作为临时方案
-		deviceID = req.DeviceInfo.GetDeviceName()
-		logger.Warn(ctx, "DeviceID not found in context, using device name as fallback",
-			logger.String("device_name", deviceID),
-		)
+	deviceID, err := getRequiredDeviceID(ctx)
+	if err != nil {
+		return nil, err
 	}
 	clientIP := util.GetClientIPFromContext(ctx)
 
@@ -335,7 +341,13 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		return nil, status.Error(codes.PermissionDenied, strconv.Itoa(consts.CodeUserDisabled))
 	}
 
-	// 3. 校验验证码（type=2: 登录）
+	// 3. 获取并校验设备 ID（必须是统一设备标识）
+	deviceID, err := getRequiredDeviceID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 校验验证码（type=2: 登录）
 	isValid, err := s.authRepo.VerifyVerifyCode(ctx, req.Email, req.VerifyCode, 2)
 	if err != nil {
 		// 判断是 Redis Key 不存在还是其他错误
@@ -359,21 +371,13 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		// 删除失败不影响登录流程，只记录警告日志
 	}
 
-	// 4. 将用户uuid写入context
+	// 5. 将用户uuid写入context
 	ctx = context.WithValue(ctx, "user_uuid", user.Uuid)
 
-	// 5. 从 context 中获取设备 ID 和客户端 IP
-	deviceID := util.GetDeviceIDFromContext(ctx)
-	if deviceID == "" {
-		// 如果没有从 context 中获取到，使用设备名称作为临时方案
-		deviceID = req.DeviceInfo.GetDeviceName()
-		logger.Warn(ctx, "DeviceID not found in context, using device name as fallback",
-			logger.String("device_name", deviceID),
-		)
-	}
+	// 6. 从 context 中获取客户端 IP
 	clientIP := util.GetClientIPFromContext(ctx)
 
-	// 6. 生成访问令牌
+	// 7. 生成访问令牌
 	accessToken, err := util.GenerateToken(user.Uuid, deviceID)
 	if err != nil {
 		logger.Error(ctx, "生成访问令牌失败",
@@ -382,10 +386,10 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
 	}
 
-	// 7. 生成刷新令牌（使用 UUID）
+	// 8. 生成刷新令牌（使用 UUID）
 	refreshToken := util.GenIDString()
 
-	// 8. 写入 Redis（AccessToken 和 RefreshToken）
+	// 9. 写入 Redis（AccessToken 和 RefreshToken）
 	if err := s.deviceRepo.StoreAccessToken(ctx, user.Uuid, deviceID, accessToken, util.AccessExpire); err != nil {
 		logger.Error(ctx, "AccessToken 写入 Redis 失败",
 			logger.ErrorField("error", err),
@@ -400,7 +404,7 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeInternalError))
 	}
 
-	// 9. 设备会话落库（Upsert：存在则更新，不存在则插入）
+	// 10. 设备会话落库（Upsert：存在则更新，不存在则插入）
 	deviceSession := &model.DeviceSession{
 		UserUuid:   user.Uuid,
 		DeviceId:   deviceID,
@@ -420,7 +424,7 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		// 这里只记录日志，不返回错误
 	}
 
-	// 10. 登录成功后立即写入活跃时间，确保在线状态可立即查询。
+	// 11. 登录成功后立即写入活跃时间，确保在线状态可立即查询。
 	if deviceID != "" {
 		if err := s.deviceRepo.SetActiveTimestamp(ctx, user.Uuid, deviceID, time.Now().Unix()); err != nil {
 			logger.Warn(ctx, "写入设备活跃时间失败",
@@ -431,7 +435,7 @@ func (s *authServiceImpl) LoginByCode(ctx context.Context, req *pb.LoginByCodeRe
 		}
 	}
 
-	// 11. 登录成功，记录日志
+	// 12. 登录成功，记录日志
 	logger.Info(ctx, "验证码登录成功",
 		logger.String("email", utils.MaskEmail(req.Email)),
 		logger.String("platform", req.DeviceInfo.GetPlatform()),

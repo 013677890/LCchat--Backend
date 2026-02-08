@@ -23,6 +23,7 @@ func GetDeviceIDFromContext(ctx context.Context) string {
 		return deviceID
 	}
 
+	/*
 	// 尝试从 gRPC metadata 中获取
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if values := md.Get("device-id"); len(values) > 0 {
@@ -32,7 +33,7 @@ func GetDeviceIDFromContext(ctx context.Context) string {
 		if values := md.Get("device_id"); len(values) > 0 {
 			return values[0]
 		}
-	}
+	}*/
 
 	// 如果都没有，返回一个默认值（建议在 interceptor 中强制要求传递）
 	return ""

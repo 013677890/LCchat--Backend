@@ -8,6 +8,7 @@ import (
 	"ChatServer/consts"
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/result"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +16,19 @@ import (
 // AuthHandler 认证处理器
 type AuthHandler struct {
 	authService service.AuthService
+}
+
+func resolveDeviceID(c *gin.Context) string {
+	if value, exists := c.Get("device_id"); exists {
+		if deviceID, ok := value.(string); ok {
+			trimmed := strings.TrimSpace(deviceID)
+			if trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+
+	return strings.TrimSpace(c.GetHeader("X-Device-ID"))
 }
 
 // NewAuthHandler 创建认证处理器
@@ -43,29 +57,21 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 2. 如果context中没有device_id,则从X-Device-ID中获取
-	deviceId, exists := c.Get("device_id")
-	if !exists {
-		// 从X-Device-ID中获取
-		deviceId = c.GetHeader("X-Device-ID")
-		//如果为空直接返回
-		if deviceId == "" {
-			ctx := middleware.NewContextWithGin(c)
-			logger.Error(ctx, "请求头中无设备ID",
-				logger.String("device_id", deviceId.(string)),
-			)
-			result.Fail(c, nil, consts.CodeParamError)
-			return
-		}
-		// 写入context
-		c.Set("device_id", deviceId)
+	// 2. 设备 ID 优先取 context，其次取 X-Device-ID；空值视为参数错误
+	deviceID := resolveDeviceID(c)
+	if deviceID == "" {
+		ctx := middleware.NewContextWithGin(c)
+		logger.Warn(ctx, "请求头中无设备ID")
+		result.Fail(c, nil, consts.CodeParamError)
+		return
 	}
+	c.Set("device_id", deviceID)
 
 	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
 	ctx := middleware.NewContextWithGin(c)
 
 	// 4. 调用服务层处理业务逻辑（依赖注入）
-	loginResp, err := h.authService.Login(ctx, &req, deviceId.(string))
+	loginResp, err := h.authService.Login(ctx, &req, deviceID)
 	if err != nil {
 		// 检查是否为业务错误
 		if consts.IsNonServerError(utils.ExtractErrorCode(err)) {
@@ -188,29 +194,21 @@ func (h *AuthHandler) LoginByCode(c *gin.Context) {
 		return
 	}
 
-	// 2. 如果context中没有device_id,则从X-Device-ID中获取
-	deviceId, exists := c.Get("device_id")
-	if !exists {
-		// 从X-Device-ID中获取
-		deviceId = c.GetHeader("X-Device-ID")
-		//如果为空直接返回
-		if deviceId == "" {
-			ctx := middleware.NewContextWithGin(c)
-			logger.Error(ctx, "请求头中无设备ID",
-				logger.String("device_id", deviceId.(string)),
-			)
-			result.Fail(c, nil, consts.CodeParamError)
-			return
-		}
-		// 写入context
-		c.Set("device_id", deviceId)
+	// 2. 设备 ID 优先取 context，其次取 X-Device-ID；空值视为参数错误
+	deviceID := resolveDeviceID(c)
+	if deviceID == "" {
+		ctx := middleware.NewContextWithGin(c)
+		logger.Warn(ctx, "请求头中无设备ID")
+		result.Fail(c, nil, consts.CodeParamError)
+		return
 	}
+	c.Set("device_id", deviceID)
 
 	// 3. 在 device_id 就绪后创建上下文，确保能透传到 user 服务。
 	ctx := middleware.NewContextWithGin(c)
 
 	// 4. 调用服务层处理业务逻辑（依赖注入）
-	loginResp, err := h.authService.LoginByCode(ctx, &req, deviceId.(string))
+	loginResp, err := h.authService.LoginByCode(ctx, &req, deviceID)
 	if err != nil {
 		// 检查是否为业务错误
 		if consts.IsNonServerError(utils.ExtractErrorCode(err)) {

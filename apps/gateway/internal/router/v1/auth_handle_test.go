@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -142,6 +143,13 @@ func TestAuthHandlerLogin(t *testing.T) {
 			wantCode:   consts.CodeParamError,
 		},
 		{
+			name:       "blank_header_device_id",
+			body:       `{"account":"a","password":"pass123"}`,
+			headerID:   "   ",
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeParamError,
+		},
+		{
 			name:     "success_with_header_device_id",
 			body:     `{"account":"a","password":"pass123"}`,
 			headerID: "d1",
@@ -151,6 +159,24 @@ func TestAuthHandlerLogin(t *testing.T) {
 					require.Equal(t, "a", req.Account)
 					require.Equal(t, "pass123", req.Password)
 					require.Equal(t, "d1", deviceID)
+					return &dto.LoginResponse{}, nil
+				}
+			},
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeSuccess,
+			wantCalled: true,
+		},
+		{
+			name:     "success_with_trimmed_header_device_id",
+			body:     `{"account":"a","password":"pass123","deviceInfo":{"deviceName":"ios","platform":"ios"}}`,
+			headerID: "  d1  ",
+			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
+				s.loginFn = func(ctx context.Context, req *dto.LoginRequest, deviceID string) (*dto.LoginResponse, error) {
+					*called = true
+					require.Equal(t, "a", req.Account)
+					require.Equal(t, "pass123", req.Password)
+					require.Equal(t, "d1", deviceID)
+					require.Equal(t, "d1", ctx.Value("device_id"))
 					return &dto.LoginResponse{}, nil
 				}
 			},
@@ -183,7 +209,7 @@ func TestAuthHandlerLogin(t *testing.T) {
 			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
 				s.loginFn = func(_ context.Context, _ *dto.LoginRequest, _ string) (*dto.LoginResponse, error) {
 					*called = true
-					return nil, status.Error(codes.Code(consts.CodePasswordError), "biz")
+					return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodePasswordError))
 				}
 			},
 			wantStatus: http.StatusOK,
@@ -257,6 +283,13 @@ func TestAuthHandlerLoginByCode(t *testing.T) {
 			wantCode:   consts.CodeParamError,
 		},
 		{
+			name:       "blank_header_device_id",
+			body:       `{"email":"a@test.com","verifyCode":"123456"}`,
+			headerID:   "   ",
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeParamError,
+		},
+		{
 			name:     "success_with_header_device_id",
 			body:     `{"email":"a@test.com","verifyCode":"123456"}`,
 			headerID: "d2",
@@ -266,6 +299,24 @@ func TestAuthHandlerLoginByCode(t *testing.T) {
 					require.Equal(t, "a@test.com", req.Email)
 					require.Equal(t, "123456", req.VerifyCode)
 					require.Equal(t, "d2", deviceID)
+					return &dto.LoginByCodeResponse{}, nil
+				}
+			},
+			wantStatus: http.StatusOK,
+			wantCode:   consts.CodeSuccess,
+			wantCalled: true,
+		},
+		{
+			name:     "success_with_trimmed_header_device_id",
+			body:     `{"email":"a@test.com","verifyCode":"123456","deviceInfo":{"deviceName":"ios","platform":"ios"}}`,
+			headerID: "  d2  ",
+			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
+				s.loginByCodeFn = func(ctx context.Context, req *dto.LoginByCodeRequest, deviceID string) (*dto.LoginByCodeResponse, error) {
+					*called = true
+					require.Equal(t, "a@test.com", req.Email)
+					require.Equal(t, "123456", req.VerifyCode)
+					require.Equal(t, "d2", deviceID)
+					require.Equal(t, "d2", ctx.Value("device_id"))
 					return &dto.LoginByCodeResponse{}, nil
 				}
 			},
@@ -298,7 +349,7 @@ func TestAuthHandlerLoginByCode(t *testing.T) {
 			setupSvc: func(s *fakeAuthHTTPService, called *bool) {
 				s.loginByCodeFn = func(_ context.Context, _ *dto.LoginByCodeRequest, _ string) (*dto.LoginByCodeResponse, error) {
 					*called = true
-					return nil, status.Error(codes.Code(consts.CodeVerifyCodeError), "biz")
+					return nil, status.Error(codes.Internal, strconv.Itoa(consts.CodeVerifyCodeError))
 				}
 			},
 			wantStatus: http.StatusOK,
