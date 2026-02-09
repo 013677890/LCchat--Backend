@@ -46,12 +46,6 @@ func NewClient(conn *websocket.Conn, userUUID, deviceID string) *Client {
 	}
 }
 
-// Key 返回连接唯一键（user_uuid:device_id）。
-// 该键用于同设备连接替换与快速索引。
-func (c *Client) Key() string {
-	return buildKey(c.userUUID, c.deviceID)
-}
-
 func (c *Client) UserUUID() string {
 	return c.userUUID
 }
