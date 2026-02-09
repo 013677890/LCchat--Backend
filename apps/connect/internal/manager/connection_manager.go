@@ -193,10 +193,12 @@ func (m *ConnectionManager) Shutdown() {
 	}
 }
 
+// userBucketFor 根据 user_uuid 定位所属分桶。
 func (m *ConnectionManager) userBucketFor(userUUID string) *userBucket {
 	return &m.userBuckets[m.bucketIndex(userUUID)]
 }
 
+// bucketIndex 计算值所属分桶索引。
 func (m *ConnectionManager) bucketIndex(value string) int {
 	if len(m.userBuckets) == 1 {
 		return 0
@@ -204,6 +206,7 @@ func (m *ConnectionManager) bucketIndex(value string) int {
 	return int(hashString(value) % uint32(len(m.userBuckets)))
 }
 
+// hashString 计算字符串的 FNV-1a 哈希值。
 func hashString(value string) uint32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(value))

@@ -10,7 +10,17 @@ import (
 
 const (
 	defaultSendQueueSize = 64
-	wsWriteTimeout       = 5 * time.Second
+	// wsWriteTimeout 单次写操作超时，避免慢连接长期阻塞写协程。
+	wsWriteTimeout = 5 * time.Second
+	// wsPongWait 读取超时窗口：若该时间内未收到任何数据或 Pong，判定连接失活。
+	wsPongWait = 60 * time.Second
+	// wsPingPeriod 主动 Ping 周期，通常小于 pongWait，确保超时窗口持续被刷新。
+	wsPingPeriod = wsPongWait * 9 / 10
+	// wsMaxMessageSize 限制单条上行消息大小，防止超大包导致内存风险。
+	wsMaxMessageSize = 1 << 20 // 1MB
+	// wsBatchDrainLimit 单次唤醒最多额外清空的排队消息数。
+	// 目的：在高峰期减少 goroutine 调度与锁竞争开销。
+	wsBatchDrainLimit = 16
 )
 
 // MessageHandler 定义上行消息回调。
@@ -92,8 +102,14 @@ func (c *Client) Run(ctx context.Context, onMessage MessageHandler, onClose Clos
 		}
 	}()
 
+	c.conn.SetReadLimit(wsMaxMessageSize)
+	_ = c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	c.conn.SetPongHandler(func(string) error {
+		return c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	})
+
 	go c.writeLoop(ctx)
-	c.readLoop(ctx, onMessage)
+	c.readLoop(onMessage)
 }
 
 // Close 幂等关闭连接。
@@ -108,17 +124,10 @@ func (c *Client) Close() {
 }
 
 // readLoop 持续读取客户端上行帧并交由 onMessage 处理。
-// 退出条件：ctx cancel、连接关闭信号、网络读错误。
-func (c *Client) readLoop(ctx context.Context, onMessage MessageHandler) {
+// 注意：ReadMessage 是阻塞调用，不使用 select 轮询 ctx/done。
+// 退出依赖连接关闭（Close）或网络读错误。
+func (c *Client) readLoop(onMessage MessageHandler) {
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.done:
-			return
-		default:
-		}
-
 		_, raw, err := c.conn.ReadMessage()
 		if err != nil {
 			return
@@ -131,20 +140,71 @@ func (c *Client) readLoop(ctx context.Context, onMessage MessageHandler) {
 }
 
 // writeLoop 持续从 send 队列取消息写入客户端。
-// 每次写操作设置超时，避免慢连接长期占用写协程。
+// 同时按固定周期发送 Ping 保活，收到 Pong 后由读协程刷新读超时。
 func (c *Client) writeLoop(ctx context.Context) {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
+			// 通过关闭底层连接打断 readLoop 的阻塞 ReadMessage。
+			c.Close()
 			return
 		case <-c.done:
 			return
 		case msg := <-c.send:
-			_ = c.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			if err := c.writeBatch(msg); err != nil {
+				c.Close()
+				return
+			}
+		case <-ticker.C:
+			if err := c.writePing(); err != nil {
 				c.Close()
 				return
 			}
 		}
 	}
+}
+
+// writeBatch 先发送当前消息，再尽量清空队列中已积压的消息。
+// 说明：每条业务消息仍保持独立 WebSocket 帧语义，避免破坏上层协议解析。
+func (c *Client) writeBatch(first []byte) error {
+	if err := c.writeFrame(first); err != nil {
+		return err
+	}
+
+	for i := 0; i < wsBatchDrainLimit; i++ {
+		select {
+		case msg := <-c.send:
+			if err := c.writeFrame(msg); err != nil {
+				return err
+			}
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// writeFrame 使用 NextWriter 发送单条文本帧。
+// 与直接 WriteMessage 相比，可为后续更细粒度写优化保留扩展点。
+func (c *Client) writeFrame(msg []byte) error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+	writer, err := c.conn.NextWriter(websocket.TextMessage)
+	if err != nil {
+		return err
+	}
+	if _, err = writer.Write(msg); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	return writer.Close()
+}
+
+// writePing 发送协议层 Ping 保活包。
+func (c *Client) writePing() error {
+	deadline := time.Now().Add(wsWriteTimeout)
+	_ = c.conn.SetWriteDeadline(deadline)
+	return c.conn.WriteControl(websocket.PingMessage, nil, deadline)
 }
