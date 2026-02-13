@@ -84,6 +84,15 @@ func main() {
 
 	// 3.5) 初始化设备活跃时间同步器（分片节流 map + 缓冲 map + 后台批量消费）。
 	deviceActiveCfg := config.DefaultDeviceActiveConfig()
+	deviceactive.SetOnlineWindow(deviceActiveCfg.OnlineWindow)
+	logger.Info(ctx, "Connect 设备活跃配置已加载",
+		logger.Duration("update_interval", deviceActiveCfg.UpdateInterval),
+		logger.Duration("flush_interval", deviceActiveCfg.FlushInterval),
+		logger.Duration("online_window", deviceActiveCfg.OnlineWindow),
+		logger.Int("shard_count", deviceActiveCfg.ShardCount),
+		logger.Int("worker_count", deviceActiveCfg.WorkerCount),
+		logger.Int("queue_size", deviceActiveCfg.QueueSize),
+	)
 	var activeSyncer *deviceactive.Syncer
 	if userDeviceClient != nil {
 		activeSyncer, err = deviceactive.NewSyncer(deviceactive.Config{
@@ -132,7 +141,9 @@ func main() {
 				logger.Int("shard_count", deviceActiveCfg.ShardCount),
 				logger.Duration("update_interval", deviceActiveCfg.UpdateInterval),
 				logger.Duration("flush_interval", deviceActiveCfg.FlushInterval),
+				logger.Duration("online_window", deviceActiveCfg.OnlineWindow),
 				logger.Int("worker_count", deviceActiveCfg.WorkerCount),
+				logger.Int("queue_size", deviceActiveCfg.QueueSize),
 			)
 		}
 	}

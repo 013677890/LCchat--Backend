@@ -5,6 +5,7 @@ import (
 	pb "ChatServer/apps/user/pb"
 	"ChatServer/consts"
 	"ChatServer/model"
+	pkgdeviceactive "ChatServer/pkg/deviceactive"
 	"ChatServer/pkg/logger"
 	"ChatServer/pkg/util"
 	"context"
@@ -21,12 +22,6 @@ import (
 type deviceServiceImpl struct {
 	deviceRepo repository.IDeviceRepository
 }
-
-const (
-	// 设备在线判定窗口：5 分钟。
-	// 超过该窗口未上报活跃时间即视为离线。
-	deviceOnlineWindow = 5 * time.Minute
-)
 
 // NewDeviceService 创建设备服务实例
 func NewDeviceService(deviceRepo repository.IDeviceRepository) DeviceService {
@@ -217,7 +212,7 @@ func (s *deviceServiceImpl) GetOnlineStatus(ctx context.Context, req *pb.GetOnli
 	}
 
 	nowSec := time.Now().Unix()
-	windowSec := int64(deviceOnlineWindow.Seconds())
+	windowSec := int64(pkgdeviceactive.OnlineWindow().Seconds())
 
 	platformSet := make(map[string]struct{})
 	isOnline := false
@@ -291,7 +286,7 @@ func (s *deviceServiceImpl) BatchGetOnlineStatus(ctx context.Context, req *pb.Ba
 	}
 
 	nowSec := time.Now().Unix()
-	windowSec := int64(deviceOnlineWindow.Seconds())
+	windowSec := int64(pkgdeviceactive.OnlineWindow().Seconds())
 
 	users := make([]*pb.OnlineStatusItem, 0, len(req.UserUuids))
 	for _, userUUID := range req.UserUuids {

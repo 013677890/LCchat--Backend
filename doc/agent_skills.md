@@ -121,7 +121,7 @@ in this project. It is intended for AI agents and new contributors.
 - `auth:rt:{user_uuid}:{device_id}` / String / RefreshToken 过期时间 / `device_repository` / RefreshToken 存储
 
 - `user:devices:{user_uuid}` / Hash / 60d / `device_repository` / 设备详情缓存 (field=device_id,value=json)
-- `user:devices:active:{user_uuid}` / Hash / 45d / `device_repository` / 设备活跃时间 (field=device_id,value=unix秒)
+- `user:devices:active:{user_uuid}` / ZSet / 7d / `device_repository` / 设备活跃时间 (member=device_id,score=unix秒)
 
 - `user:info:{uuid}` / String(JSON) / 1h±随机抖动; 空值5m / `user_repository` / 用户信息缓存 (空值为 `{}`)
 
@@ -179,8 +179,8 @@ in this project. It is intended for AI agents and new contributors.
 - `business_code` is stored in context for metrics middleware.
 
 #### 3.17 Device Session Notes
-- `lastSeenAt` 来自 `user:devices:active:{user_uuid}`，缺失时会写入当前时间并返回“刚刚”语义。
-- Gateway JWT 校验成功后，按 10min 节流更新活跃时间（本地 LRU 缓存）。
+- `lastSeenAt` 来自 `user:devices:active:{user_uuid}`，缺失时返回 0，不再补写当前时间。
+- Gateway/Connect 在请求入口按分片 map 节流（默认 3 分钟）并按周期批量上报（默认 1 分钟）。
 - 设备信息缓存 TTL 在登录与刷新 token 时续期。
 
 #### 3.18 Async 协程池

@@ -16,6 +16,7 @@ import (
 	"ChatServer/config"
 	"ChatServer/pkg/async"
 	"ChatServer/pkg/ctxmeta"
+	pkgdeviceactive "ChatServer/pkg/deviceactive"
 	"ChatServer/pkg/grpcx"
 	"ChatServer/pkg/kafka"
 	"ChatServer/pkg/logger"
@@ -137,6 +138,15 @@ func main() {
 			}
 		}()
 	}
+
+	// 4.5 初始化设备活跃时间配置（用于在线判定窗口管理）
+	deviceActiveCfg := config.DefaultDeviceActiveConfig()
+	pkgdeviceactive.SetOnlineWindow(deviceActiveCfg.OnlineWindow)
+	logger.Info(ctx, "User 设备活跃配置已加载",
+		logger.Duration("online_window", deviceActiveCfg.OnlineWindow),
+		logger.Duration("update_interval", deviceActiveCfg.UpdateInterval),
+		logger.Duration("flush_interval", deviceActiveCfg.FlushInterval),
+	)
 
 	// 5. 组装依赖 - Repository 层
 	authRepo := repository.NewAuthRepository(db, redisClient)

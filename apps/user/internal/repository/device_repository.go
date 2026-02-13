@@ -4,6 +4,7 @@ import (
 	"ChatServer/apps/user/mq"
 	"ChatServer/consts/redisKey"
 	"ChatServer/model"
+	pkgdeviceactive "ChatServer/pkg/deviceactive"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -187,7 +188,7 @@ func (r *deviceRepositoryImpl) TouchDeviceInfoTTL(ctx context.Context, userUUID 
 // - member: device_id
 // - score: unix 秒时间戳
 //
-// 在线判定窗口为 5 分钟，读取时仅做查询与过滤（不执行写操作）。
+// 在线判定窗口由设备活跃配置控制（默认 5 分钟），读取时仅做查询与过滤（不执行写操作）。
 func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID string, deviceIDs []string) (map[string]int64, error) {
 	result := make(map[string]int64, len(deviceIDs))
 	if len(deviceIDs) == 0 {
@@ -197,7 +198,7 @@ func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID
 		return result, nil
 	}
 	key := r.deviceActiveKey(userUUID)
-	cutoff := time.Now().Add(-5 * time.Minute).Unix()
+	cutoff := pkgdeviceactive.CutoffUnix(time.Now())
 
 	pipe := r.redisClient.Pipeline()
 	scoreCmds := make(map[string]*redis.FloatCmd, len(deviceIDs))
@@ -226,7 +227,7 @@ func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID
 }
 
 // SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期（zset）。
-// 写入时顺手清理 5 分钟之外的过期设备。
+// 写入时顺手清理在线窗口之外的过期设备。
 func (r *deviceRepositoryImpl) SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error {
 	if r.redisClient == nil {
 		return nil
@@ -240,7 +241,7 @@ func (r *deviceRepositoryImpl) SetActiveTimestamp(ctx context.Context, userUUID,
 }
 
 // BatchSetActiveTimestamps 批量设置设备活跃时间戳（unix 秒）并续期（zset）。
-// 写入时顺手清理 5 分钟之外的过期设备。
+// 写入时顺手清理在线窗口之外的过期设备。
 func (r *deviceRepositoryImpl) BatchSetActiveTimestamps(ctx context.Context, items []DeviceActiveItem, ts int64) error {
 	if r.redisClient == nil || len(items) == 0 {
 		return nil
@@ -262,7 +263,7 @@ func (r *deviceRepositoryImpl) BatchSetActiveTimestamps(ctx context.Context, ite
 		return nil
 	}
 
-	cutoff := time.Now().Add(-5 * time.Minute).Unix()
+	cutoff := pkgdeviceactive.CutoffUnix(time.Now())
 	pipe := r.redisClient.Pipeline()
 	retryCmds := make([]mq.RedisCmd, 0, len(grouped)*3)
 	for userUUID, deviceSet := range grouped {

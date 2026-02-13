@@ -84,14 +84,18 @@ value JSON 字段示例：
 
 | Key Pattern | 数据类型 | TTL | Repository | 说明 |
 |-------------|----------|-----|------------|------|
-| `user:devices:active:{user_uuid}` | Hash | 45d | `device_repository` | 设备活跃时间缓存（field=device_id, value=unix秒） |
+| `user:devices:active:{user_uuid}` | ZSet | 7d | `device_repository` | 设备活跃时间缓存（member=device_id, score=unix秒） |
 
 #### 操作函数
 
 | 函数 | 操作 | Key |
 |------|------|-----|
-| `GetActiveTimestamps()` | HMGET | `user:devices:active:{user_uuid}` |
-| `SetActiveTimestamp()` | HSET + EXPIRE | `user:devices:active:{user_uuid}` |
+| `GetActiveTimestamps()` | Pipeline ZSCORE | `user:devices:active:{user_uuid}` |
+| `SetActiveTimestamp()` | ZADD + ZREMRANGEBYSCORE + EXPIRE | `user:devices:active:{user_uuid}` |
+| `BatchSetActiveTimestamps()` | Pipeline (ZADD + ZREMRANGEBYSCORE + EXPIRE) | `user:devices:active:{user_uuid}` |
+
+> 在线窗口默认 5 分钟。  
+> 读取路径只做查询与窗口过滤，不执行写命令；过期清理在写路径中完成。
 
 ---
 

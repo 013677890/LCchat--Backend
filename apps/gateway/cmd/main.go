@@ -113,6 +113,15 @@ func main() {
 
 	// 4.5 读取设备活跃同步配置（实际初始化在 gRPC 客户端创建后执行）
 	deviceActiveCfg := config.DefaultDeviceActiveConfig()
+	deviceactive.SetOnlineWindow(deviceActiveCfg.OnlineWindow)
+	logger.Info(ctx, "设备活跃配置已加载",
+		logger.Duration("update_interval", deviceActiveCfg.UpdateInterval),
+		logger.Duration("flush_interval", deviceActiveCfg.FlushInterval),
+		logger.Duration("online_window", deviceActiveCfg.OnlineWindow),
+		logger.Int("shard_count", deviceActiveCfg.ShardCount),
+		logger.Int("worker_count", deviceActiveCfg.WorkerCount),
+		logger.Int("queue_size", deviceActiveCfg.QueueSize),
+	)
 
 	// 5. 初始化 gRPC 客户端（依赖注入）
 	userServiceAddr := os.Getenv("USER_SERVICE_ADDR")
@@ -176,7 +185,9 @@ func main() {
 			logger.Int("shard_count", deviceActiveCfg.ShardCount),
 			logger.Duration("update_interval", deviceActiveCfg.UpdateInterval),
 			logger.Duration("flush_interval", deviceActiveCfg.FlushInterval),
+			logger.Duration("online_window", deviceActiveCfg.OnlineWindow),
 			logger.Int("worker_count", deviceActiveCfg.WorkerCount),
+			logger.Int("queue_size", deviceActiveCfg.QueueSize),
 		)
 	}
 	defer middleware.ShutdownDeviceActiveSyncer()
