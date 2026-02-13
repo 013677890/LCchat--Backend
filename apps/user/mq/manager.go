@@ -24,8 +24,8 @@ func SetGlobalProducer(producer *kafka.Producer) {
 
 // GetGlobalProducer 获取全局 Kafka Producer 实例
 func GetGlobalProducer() *kafka.Producer {
-	producerMu.RLock()
-	defer producerMu.RUnlock()
+	//producerMu.RLock()
+	//defer producerMu.RUnlock()
 	return globalProducer
 }
 
