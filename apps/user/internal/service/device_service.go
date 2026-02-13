@@ -182,13 +182,23 @@ func (s *deviceServiceImpl) GetOnlineStatus(ctx context.Context, req *pb.GetOnli
 	}
 	sessions := sessionsByUser[req.UserUuid]
 
-	// 无设备会话，直接离线返回。
+	lastSeenMap, err := s.deviceRepo.BatchGetLastSeenTimestamps(ctx, []string{req.UserUuid})
+	if err != nil {
+		logger.Warn(ctx, "获取在线状态失败：读取最近活跃时间失败，按 0 返回",
+			logger.String("user_uuid", req.UserUuid),
+			logger.ErrorField("error", err),
+		)
+		lastSeenMap = map[string]int64{}
+	}
+	lastSeenSec := lastSeenMap[req.UserUuid]
+
+	// 无设备会话，直接离线返回（lastSeenAt 仍取 active zset 最近值）。
 	if len(sessions) == 0 {
 		return &pb.GetOnlineStatusResponse{
 			Status: &pb.OnlineStatus{
 				UserUuid:        req.UserUuid,
 				IsOnline:        false,
-				LastSeenAt:      0,
+				LastSeenAt:      lastSeenSec * 1000,
 				OnlinePlatforms: []string{},
 			},
 		}, nil
@@ -216,7 +226,6 @@ func (s *deviceServiceImpl) GetOnlineStatus(ctx context.Context, req *pb.GetOnli
 
 	platformSet := make(map[string]struct{})
 	isOnline := false
-	var lastSeenSec int64
 
 	for _, session := range sessions {
 		if session == nil || session.DeviceId == "" {
@@ -226,9 +235,6 @@ func (s *deviceServiceImpl) GetOnlineStatus(ctx context.Context, req *pb.GetOnli
 		seenSec, ok := activeTimes[session.DeviceId]
 		if !ok || seenSec <= 0 {
 			continue
-		}
-		if seenSec > lastSeenSec {
-			lastSeenSec = seenSec
 		}
 
 		// 在线判定：状态=在线 且 (当前时间 - Redis 活跃时间) <= 窗口。
@@ -288,18 +294,12 @@ func (s *deviceServiceImpl) BatchGetOnlineStatus(ctx context.Context, req *pb.Ba
 	nowSec := time.Now().Unix()
 	windowSec := int64(pkgdeviceactive.OnlineWindow().Seconds())
 
-	users := make([]*pb.OnlineStatusItem, 0, len(req.UserUuids))
-	for _, userUUID := range req.UserUuids {
+	userDeviceIDs := make(map[string][]string, len(unique))
+	for _, userUUID := range unique {
 		sessions := sessionsByUser[userUUID]
 		if len(sessions) == 0 {
-			users = append(users, &pb.OnlineStatusItem{
-				UserUuid:   userUUID,
-				IsOnline:   false,
-				LastSeenAt: 0,
-			})
 			continue
 		}
-
 		deviceIDs := make([]string, 0, len(sessions))
 		for _, session := range sessions {
 			if session == nil || session.DeviceId == "" {
@@ -307,18 +307,48 @@ func (s *deviceServiceImpl) BatchGetOnlineStatus(ctx context.Context, req *pb.Ba
 			}
 			deviceIDs = append(deviceIDs, session.DeviceId)
 		}
+		if len(deviceIDs) > 0 {
+			userDeviceIDs[userUUID] = deviceIDs
+		}
+	}
 
-		activeTimes, err := s.deviceRepo.GetActiveTimestamps(ctx, userUUID, deviceIDs)
-		if err != nil {
-			logger.Warn(ctx, "批量获取在线状态：读取设备活跃时间失败，按离线处理",
-				logger.String("user_uuid", userUUID),
-				logger.ErrorField("error", err),
-			)
+	activeByUser, err := s.deviceRepo.BatchGetActiveTimestamps(ctx, userDeviceIDs)
+	if err != nil {
+		logger.Warn(ctx, "批量获取在线状态：批量读取设备活跃时间失败，按离线处理",
+			logger.Int("user_count", len(userDeviceIDs)),
+			logger.ErrorField("error", err),
+		)
+		activeByUser = map[string]map[string]int64{}
+	}
+
+	lastSeenByUser, err := s.deviceRepo.BatchGetLastSeenTimestamps(ctx, unique)
+	if err != nil {
+		logger.Warn(ctx, "批量获取在线状态：读取最近活跃时间失败，按 0 返回",
+			logger.Int("user_count", len(unique)),
+			logger.ErrorField("error", err),
+		)
+		lastSeenByUser = map[string]int64{}
+	}
+
+	users := make([]*pb.OnlineStatusItem, 0, len(req.UserUuids))
+	for _, userUUID := range req.UserUuids {
+		sessions := sessionsByUser[userUUID]
+		lastSeenSec := lastSeenByUser[userUUID]
+		if len(sessions) == 0 {
+			users = append(users, &pb.OnlineStatusItem{
+				UserUuid:   userUUID,
+				IsOnline:   false,
+				LastSeenAt: lastSeenSec * 1000,
+			})
+			continue
+		}
+
+		activeTimes := activeByUser[userUUID]
+		if activeTimes == nil {
 			activeTimes = map[string]int64{}
 		}
 
 		isOnline := false
-		var lastSeenSec int64
 		for _, session := range sessions {
 			if session == nil || session.DeviceId == "" {
 				continue
@@ -326,9 +356,6 @@ func (s *deviceServiceImpl) BatchGetOnlineStatus(ctx context.Context, req *pb.Ba
 			seenSec, ok := activeTimes[session.DeviceId]
 			if !ok || seenSec <= 0 {
 				continue
-			}
-			if seenSec > lastSeenSec {
-				lastSeenSec = seenSec
 			}
 			if session.Status == model.DeviceStatusOnline && nowSec-seenSec <= windowSec {
 				isOnline = true

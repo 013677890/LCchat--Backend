@@ -226,6 +226,122 @@ func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID
 	return result, nil
 }
 
+// BatchGetActiveTimestamps 批量获取多用户设备活跃时间戳（unix 秒）。
+// 读取路径只做查询与窗口过滤，不执行写操作。
+func (r *deviceRepositoryImpl) BatchGetActiveTimestamps(ctx context.Context, userDeviceIDs map[string][]string) (map[string]map[string]int64, error) {
+	result := make(map[string]map[string]int64, len(userDeviceIDs))
+	if len(userDeviceIDs) == 0 {
+		return result, nil
+	}
+	if r.redisClient == nil {
+		return result, nil
+	}
+
+	cutoff := pkgdeviceactive.CutoffUnix(time.Now())
+	pipe := r.redisClient.Pipeline()
+	scoreCmds := make(map[string]map[string]*redis.FloatCmd, len(userDeviceIDs))
+
+	for userUUID, deviceIDs := range userDeviceIDs {
+		if userUUID == "" || len(deviceIDs) == 0 {
+			continue
+		}
+		key := r.deviceActiveKey(userUUID)
+		userCmds := make(map[string]*redis.FloatCmd, len(deviceIDs))
+		for _, deviceID := range deviceIDs {
+			if deviceID == "" {
+				continue
+			}
+			if _, exists := userCmds[deviceID]; exists {
+				continue
+			}
+			userCmds[deviceID] = pipe.ZScore(ctx, key, deviceID)
+		}
+		if len(userCmds) > 0 {
+			scoreCmds[userUUID] = userCmds
+		}
+	}
+
+	if len(scoreCmds) == 0 {
+		return result, nil
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, WrapRedisError(err)
+	}
+
+	for userUUID, userCmds := range scoreCmds {
+		userResult := make(map[string]int64, len(userCmds))
+		for deviceID, cmd := range userCmds {
+			score, err := cmd.Result()
+			if err == redis.Nil {
+				continue
+			}
+			if err != nil {
+				return nil, WrapRedisError(err)
+			}
+			sec := int64(score)
+			if sec < cutoff {
+				continue
+			}
+			userResult[deviceID] = sec
+		}
+		if len(userResult) > 0 {
+			result[userUUID] = userResult
+		}
+	}
+
+	return result, nil
+}
+
+// BatchGetLastSeenTimestamps 批量获取用户最近活跃时间戳（unix 秒）。
+// 直接读取 user:devices:active:{user_uuid} 的最大 score，不做在线窗口过滤。
+func (r *deviceRepositoryImpl) BatchGetLastSeenTimestamps(ctx context.Context, userUUIDs []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(userUUIDs))
+	if len(userUUIDs) == 0 {
+		return result, nil
+	}
+	if r.redisClient == nil {
+		return result, nil
+	}
+
+	pipe := r.redisClient.Pipeline()
+	lastSeenCmds := make(map[string]*redis.ZSliceCmd, len(userUUIDs))
+	for _, userUUID := range userUUIDs {
+		if userUUID == "" {
+			continue
+		}
+		if _, exists := lastSeenCmds[userUUID]; exists {
+			continue
+		}
+		lastSeenCmds[userUUID] = pipe.ZRevRangeWithScores(ctx, r.deviceActiveKey(userUUID), 0, 0)
+	}
+
+	if len(lastSeenCmds) == 0 {
+		return result, nil
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, WrapRedisError(err)
+	}
+
+	for userUUID, cmd := range lastSeenCmds {
+		entries, err := cmd.Result()
+		if err == redis.Nil || len(entries) == 0 {
+			continue
+		}
+		if err != nil {
+			return nil, WrapRedisError(err)
+		}
+		sec := int64(entries[0].Score)
+		if sec <= 0 {
+			continue
+		}
+		result[userUUID] = sec
+	}
+
+	return result, nil
+}
+
 // SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期（zset）。
 // 写入时顺手清理在线窗口之外的过期设备。
 func (r *deviceRepositoryImpl) SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error {

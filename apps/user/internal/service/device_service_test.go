@@ -59,6 +59,8 @@ type fakeDeviceRepository struct {
 	upsertSessionFn        func(context.Context, *model.DeviceSession) error
 	touchDeviceInfoTTLFn   func(context.Context, string) error
 	getActiveTimestampsFn  func(context.Context, string, []string) (map[string]int64, error)
+	batchGetActiveTsFn     func(context.Context, map[string][]string) (map[string]map[string]int64, error)
+	batchGetLastSeenTsFn   func(context.Context, []string) (map[string]int64, error)
 	setActiveTimestampFn   func(context.Context, string, string, int64) error
 	batchSetActiveTsFn     func(context.Context, []repository.DeviceActiveItem, int64) error
 	updateOnlineStatusFn   func(context.Context, string, string, int8) error
@@ -115,6 +117,20 @@ func (f *fakeDeviceRepository) GetActiveTimestamps(ctx context.Context, userUUID
 		return map[string]int64{}, nil
 	}
 	return f.getActiveTimestampsFn(ctx, userUUID, deviceIDs)
+}
+
+func (f *fakeDeviceRepository) BatchGetActiveTimestamps(ctx context.Context, userDeviceIDs map[string][]string) (map[string]map[string]int64, error) {
+	if f.batchGetActiveTsFn == nil {
+		return map[string]map[string]int64{}, nil
+	}
+	return f.batchGetActiveTsFn(ctx, userDeviceIDs)
+}
+
+func (f *fakeDeviceRepository) BatchGetLastSeenTimestamps(ctx context.Context, userUUIDs []string) (map[string]int64, error) {
+	if f.batchGetLastSeenTsFn == nil {
+		return map[string]int64{}, nil
+	}
+	return f.batchGetLastSeenTsFn(ctx, userUUIDs)
 }
 
 func (f *fakeDeviceRepository) SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error {
@@ -508,6 +524,10 @@ func TestUserDeviceServiceGetOnlineStatus(t *testing.T) {
 					"d3": now - 10,   // 离线状态，但用于 lastSeen
 				}, nil
 			},
+			batchGetLastSeenTsFn: func(_ context.Context, userUUIDs []string) (map[string]int64, error) {
+				assert.Equal(t, []string{"u1"}, userUUIDs)
+				return map[string]int64{"u1": now - 10}, nil
+			},
 		})
 
 		resp, err := svc.GetOnlineStatus(context.Background(), &pb.GetOnlineStatusRequest{UserUuid: "u1"})
@@ -575,16 +595,20 @@ func TestUserDeviceServiceBatchGetOnlineStatus(t *testing.T) {
 					},
 				}, nil
 			},
-			getActiveTimestampsFn: func(_ context.Context, userUUID string, deviceIDs []string) (map[string]int64, error) {
-				if userUUID == "u1" {
-					assert.Equal(t, []string{"d1"}, deviceIDs)
-					return map[string]int64{"d1": now - 10}, nil
-				}
-				if userUUID == "u2" {
-					assert.Equal(t, []string{"d2"}, deviceIDs)
-					return nil, errors.New("redis failed")
-				}
-				return map[string]int64{}, nil
+			batchGetActiveTsFn: func(_ context.Context, userDeviceIDs map[string][]string) (map[string]map[string]int64, error) {
+				assert.Equal(t, []string{"d1"}, userDeviceIDs["u1"])
+				assert.Equal(t, []string{"d2"}, userDeviceIDs["u2"])
+				_, exists := userDeviceIDs["u3"]
+				assert.False(t, exists)
+				return map[string]map[string]int64{
+					"u1": {"d1": now - 10},
+				}, nil
+			},
+			batchGetLastSeenTsFn: func(_ context.Context, userUUIDs []string) (map[string]int64, error) {
+				assert.Equal(t, []string{"u1", "u2", "u3"}, userUUIDs)
+				return map[string]int64{
+					"u1": now - 10,
+				}, nil
 			},
 		})
 

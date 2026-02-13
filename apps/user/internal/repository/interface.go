@@ -243,6 +243,15 @@ type IDeviceRepository interface {
 	// GetActiveTimestamps 获取设备活跃时间戳（unix 秒）
 	GetActiveTimestamps(ctx context.Context, userUUID string, deviceIDs []string) (map[string]int64, error)
 
+	// BatchGetActiveTimestamps 批量获取多用户设备活跃时间戳（unix 秒）
+	// 入参：userUUID -> deviceID 列表
+	// 返回：userUUID -> (deviceID -> unix 秒)
+	BatchGetActiveTimestamps(ctx context.Context, userDeviceIDs map[string][]string) (map[string]map[string]int64, error)
+
+	// BatchGetLastSeenTimestamps 批量获取用户最近活跃时间戳（unix 秒）
+	// 直接读取 user:devices:active:{user_uuid} 的最大 score，不做在线窗口过滤。
+	BatchGetLastSeenTimestamps(ctx context.Context, userUUIDs []string) (map[string]int64, error)
+
 	// SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期
 	SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error
 
