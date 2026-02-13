@@ -23,9 +23,9 @@ type deviceServiceImpl struct {
 }
 
 const (
-	// 设备在线判定窗口：15 分钟。
-	// 网关活跃时间写入为 10 分钟节流，窗口需大于节流间隔以降低误判。
-	deviceOnlineWindow = 15 * time.Minute
+	// 设备在线判定窗口：5 分钟。
+	// 超过该窗口未上报活跃时间即视为离线。
+	deviceOnlineWindow = 5 * time.Minute
 )
 
 // NewDeviceService 创建设备服务实例
@@ -65,7 +65,7 @@ func (s *deviceServiceImpl) GetDeviceList(ctx context.Context, req *pb.GetDevice
 
 	activeTimes, err := s.deviceRepo.GetActiveTimestamps(ctx, userUUID, deviceIDs)
 	if err != nil {
-		logger.Warn(ctx, "获取设备活跃时间失败，使用当前时间兜底",
+		logger.Warn(ctx, "获取设备活跃时间失败，按空活跃时间返回",
 			logger.String("user_uuid", userUUID),
 			logger.ErrorField("error", err),
 		)
@@ -79,14 +79,7 @@ func (s *deviceServiceImpl) GetDeviceList(ctx context.Context, req *pb.GetDevice
 		}
 		sec, ok := activeTimes[session.DeviceId]
 		if !ok || sec <= 0 {
-			sec = time.Now().Unix()
-			if err := s.deviceRepo.SetActiveTimestamp(ctx, userUUID, session.DeviceId, sec); err != nil {
-				logger.Warn(ctx, "补写设备活跃时间失败",
-					logger.String("user_uuid", userUUID),
-					logger.String("device_id", session.DeviceId),
-					logger.ErrorField("error", err),
-				)
-			}
+			sec = 0
 		}
 		lastSeenAt := sec * 1000
 		devices = append(devices, &pb.DeviceItem{

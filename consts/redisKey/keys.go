@@ -18,7 +18,7 @@ const (
 	// DeviceInfoTTL 设备信息缓存 TTL
 	DeviceInfoTTL = 60 * 24 * time.Hour
 	// DeviceActiveTTL 设备活跃时间缓存 TTL
-	DeviceActiveTTL = 45 * 24 * time.Hour
+	DeviceActiveTTL = 7 * 24 * time.Hour
 
 	// UserInfoTTL 用户信息缓存 TTL
 	UserInfoTTL = 1 * time.Hour

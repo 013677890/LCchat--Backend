@@ -180,7 +180,14 @@ func (r *deviceRepositoryImpl) TouchDeviceInfoTTL(ctx context.Context, userUUID 
 	return nil
 }
 
-// GetActiveTimestamps 获取设备活跃时间戳（unix 秒）
+// GetActiveTimestamps 获取设备活跃时间戳（unix 秒）。
+// 数据结构：
+// - key: user:devices:active:{user_uuid}
+// - type: zset
+// - member: device_id
+// - score: unix 秒时间戳
+//
+// 在线判定窗口为 5 分钟，读取时仅做查询与过滤（不执行写操作）。
 func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID string, deviceIDs []string) (map[string]int64, error) {
 	result := make(map[string]int64, len(deviceIDs))
 	if len(deviceIDs) == 0 {
@@ -190,44 +197,53 @@ func (r *deviceRepositoryImpl) GetActiveTimestamps(ctx context.Context, userUUID
 		return result, nil
 	}
 	key := r.deviceActiveKey(userUUID)
-	values, err := r.redisClient.HMGet(ctx, key, deviceIDs...).Result()
-	if err != nil {
+	cutoff := time.Now().Add(-5 * time.Minute).Unix()
+
+	pipe := r.redisClient.Pipeline()
+	scoreCmds := make(map[string]*redis.FloatCmd, len(deviceIDs))
+	for _, deviceID := range deviceIDs {
+		scoreCmds[deviceID] = pipe.ZScore(ctx, key, deviceID)
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
 		return nil, WrapRedisError(err)
 	}
-	for i, v := range values {
-		if v == nil {
+
+	for deviceID, cmd := range scoreCmds {
+		score, err := cmd.Result()
+		if err == redis.Nil {
 			continue
 		}
-		switch val := v.(type) {
-		case string:
-			if ts, parseErr := strconv.ParseInt(val, 10, 64); parseErr == nil {
-				result[deviceIDs[i]] = ts
-			}
-		case []byte:
-			if ts, parseErr := strconv.ParseInt(string(val), 10, 64); parseErr == nil {
-				result[deviceIDs[i]] = ts
-			}
-		case int64:
-			result[deviceIDs[i]] = val
-		case int:
-			result[deviceIDs[i]] = int64(val)
+		if err != nil {
+			return nil, WrapRedisError(err)
 		}
+		sec := int64(score)
+		if sec < cutoff {
+			continue
+		}
+		result[deviceID] = sec
 	}
 	return result, nil
 }
 
-// SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期
+// SetActiveTimestamp 设置设备活跃时间戳（unix 秒）并续期（zset）。
+// 写入时顺手清理 5 分钟之外的过期设备。
 func (r *deviceRepositoryImpl) SetActiveTimestamp(ctx context.Context, userUUID, deviceID string, ts int64) error {
 	if r.redisClient == nil {
 		return nil
 	}
 	key := r.deviceActiveKey(userUUID)
+	cutoff := time.Now().Add(-5 * time.Minute).Unix()
 	pipe := r.redisClient.Pipeline()
-	pipe.HSet(ctx, key, deviceID, ts)
+	pipe.ZAdd(ctx, key, redis.Z{
+		Score:  float64(ts),
+		Member: deviceID,
+	})
+	pipe.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(cutoff, 10))
 	pipe.Expire(ctx, key, rediskey.DeviceActiveTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		cmds := []mq.RedisCmd{
-			{Command: "hset", Args: []interface{}{key, deviceID, ts}},
+			{Command: "zadd", Args: []interface{}{key, ts, deviceID}},
+			{Command: "zremrangebyscore", Args: []interface{}{key, "-inf", cutoff}},
 			{Command: "expire", Args: []interface{}{key, int(rediskey.DeviceActiveTTL.Seconds())}},
 		}
 		task := mq.BuildPipelineTask(cmds).

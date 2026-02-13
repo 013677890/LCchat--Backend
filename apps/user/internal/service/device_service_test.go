@@ -231,8 +231,6 @@ func TestUserDeviceServiceGetDeviceList(t *testing.T) {
 
 	t.Run("success_sort_and_current_device", func(t *testing.T) {
 		nowSec := time.Now().Unix()
-		var setActiveCalls int
-		var setActiveDevice string
 
 		svc := NewDeviceService(&fakeDeviceRepository{
 			batchGetOnlineStatusFn: func(_ context.Context, userUUIDs []string) (map[string][]*model.DeviceSession, error) {
@@ -252,14 +250,6 @@ func TestUserDeviceServiceGetDeviceList(t *testing.T) {
 					"d2": nowSec - 30,
 				}, nil
 			},
-			setActiveTimestampFn: func(_ context.Context, userUUID, deviceID string, ts int64) error {
-				setActiveCalls++
-				setActiveDevice = deviceID
-				assert.Equal(t, "u1", userUUID)
-				assert.Equal(t, "d1", deviceID)
-				assert.Greater(t, ts, int64(0))
-				return nil
-			},
 		})
 
 		resp, err := svc.GetDeviceList(withDeviceContext("u1", "d2"), &pb.GetDeviceListRequest{})
@@ -267,15 +257,13 @@ func TestUserDeviceServiceGetDeviceList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Len(t, resp.Devices, 2)
 
-		assert.Equal(t, 1, setActiveCalls)
-		assert.Equal(t, "d1", setActiveDevice)
-
-		// d1 缺失活跃时间被补写为当前时间，排序应在前。
-		assert.Equal(t, "d1", resp.Devices[0].DeviceId)
-		assert.Equal(t, "d2", resp.Devices[1].DeviceId)
-		assert.False(t, resp.Devices[0].IsCurrentDevice)
-		assert.True(t, resp.Devices[1].IsCurrentDevice)
-		assert.Greater(t, resp.Devices[0].LastSeenAt, resp.Devices[1].LastSeenAt)
+		// d2 有活跃时间，d1 无活跃时间（0），排序应 d2 在前。
+		assert.Equal(t, "d2", resp.Devices[0].DeviceId)
+		assert.Equal(t, "d1", resp.Devices[1].DeviceId)
+		assert.True(t, resp.Devices[0].IsCurrentDevice)
+		assert.False(t, resp.Devices[1].IsCurrentDevice)
+		assert.Greater(t, resp.Devices[0].LastSeenAt, int64(0))
+		assert.Equal(t, int64(0), resp.Devices[1].LastSeenAt)
 	})
 
 	t.Run("active_time_read_or_write_error_does_not_fail", func(t *testing.T) {
@@ -290,9 +278,6 @@ func TestUserDeviceServiceGetDeviceList(t *testing.T) {
 			getActiveTimestampsFn: func(_ context.Context, _ string, _ []string) (map[string]int64, error) {
 				return nil, errors.New("active redis down")
 			},
-			setActiveTimestampFn: func(_ context.Context, _, _ string, _ int64) error {
-				return errors.New("write failed")
-			},
 		})
 
 		resp, err := svc.GetDeviceList(withDeviceContext("u1", "d1"), &pb.GetDeviceListRequest{})
@@ -300,7 +285,7 @@ func TestUserDeviceServiceGetDeviceList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Len(t, resp.Devices, 1)
 		assert.Equal(t, "d1", resp.Devices[0].DeviceId)
-		assert.Greater(t, resp.Devices[0].LastSeenAt, int64(0))
+		assert.Equal(t, int64(0), resp.Devices[0].LastSeenAt)
 	})
 }
 
