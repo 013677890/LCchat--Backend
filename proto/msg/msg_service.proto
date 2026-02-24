@@ -51,7 +51,9 @@ service MsgService {
   rpc MarkRead(MarkReadRequest) returns (MarkReadResponse);
 
   // DeleteConversation 删除（关闭）会话。
-  // 逻辑删除：status 置为 1，不影响消息数据。
+  // 逻辑删除：status 置为 1，同时记录 clear_seq = 当前 max_seq。
+  // 后续 PullMessages 时增加 seq > clear_seq 过滤，防止被删除的消息"幽灵复活"。
+  // read_seq 同步设为 max_seq（未读数归零）。
   rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
 
   // UpdateConversationSettings 更新会话设置（免打扰/置顶）。
@@ -193,7 +195,9 @@ message MarkReadRequest {
 }
 
 message MarkReadResponse {
-  // unread_count: 标记后的剩余未读数（通常为 0）。
+  // unread_count: 标记后的剩余未读数。
+  // 由 max(0, conv.max_seq - read_seq) 动态计算，
+  // 若标记期间有并发新消息插入，此值可能大于 0。
   int32 unread_count = 1;
 }
 
