@@ -1,10 +1,10 @@
 package grpc
 
 import (
-	"ChatServer/apps/connect/internal/manager"
-	"ChatServer/apps/connect/pb"
-	"ChatServer/pkg/grpcx"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/apps/connect/internal/manager"
+	"github.com/013677890/LCchat-Backend/apps/connect/pb"
+	"github.com/013677890/LCchat-Backend/pkg/grpcx"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 	"context"
 	"net"
 	"os"

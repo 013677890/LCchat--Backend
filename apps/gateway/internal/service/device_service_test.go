@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"ChatServer/apps/gateway/internal/dto"
-	gatewaypb "ChatServer/apps/gateway/internal/pb"
-	userpb "ChatServer/apps/user/pb"
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
+	gatewaypb "github.com/013677890/LCchat-Backend/apps/gateway/internal/pb"
+	userpb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

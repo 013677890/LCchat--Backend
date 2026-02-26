@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 
-	"ChatServer/apps/gateway/internal/dto"
-	"ChatServer/consts"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"

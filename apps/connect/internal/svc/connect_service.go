@@ -1,8 +1,8 @@
 package svc
 
 import (
-	userpb "ChatServer/apps/user/pb"
-	"ChatServer/pkg/deviceactive"
+	userpb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/pkg/deviceactive"
 	"encoding/json"
 	"errors"
 	"strings"

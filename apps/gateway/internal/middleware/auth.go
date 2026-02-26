@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"ChatServer/pkg/ctxmeta"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/pkg/ctxmeta"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 	"net/http"
 	"strings"
 

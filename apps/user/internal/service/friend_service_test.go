@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"ChatServer/apps/user/internal/repository"
-	pb "ChatServer/apps/user/pb"
-	"ChatServer/consts"
-	"ChatServer/model"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/apps/user/internal/repository"
+	pb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/model"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

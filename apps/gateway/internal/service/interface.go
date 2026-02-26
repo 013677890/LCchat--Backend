@@ -1,7 +1,7 @@
 package service
 
 import (
-	"ChatServer/apps/gateway/internal/dto"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
 	"context"
 )
 

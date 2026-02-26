@@ -1,7 +1,7 @@
 package result
 
 import (
-	"ChatServer/consts" // 你的错误码定义包
+	"github.com/013677890/LCchat-Backend/consts" // 你的错误码定义包
 	"net/http"
 	"sync"
 	"time"

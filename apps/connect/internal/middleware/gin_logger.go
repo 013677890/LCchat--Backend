@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"ChatServer/pkg/ctxmeta"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/ctxmeta"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 	"net/http"
 	"time"
 

@@ -1,13 +1,13 @@
 package logger
 
 import (
-	"ChatServer/pkg/ctxmeta"
+	"github.com/013677890/LCchat-Backend/pkg/ctxmeta"
 	"context"
 	"os"
 	"strings"
 	"time"
 
-	"ChatServer/config"
+	"github.com/013677890/LCchat-Backend/config"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

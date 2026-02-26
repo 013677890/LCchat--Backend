@@ -12,11 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	"ChatServer/apps/gateway/internal/dto"
-	"ChatServer/apps/gateway/internal/service"
-	"ChatServer/consts"
-	"ChatServer/pkg/logger"
-	pkgminio "ChatServer/pkg/minio"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/service"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	pkgminio "github.com/013677890/LCchat-Backend/pkg/minio"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"

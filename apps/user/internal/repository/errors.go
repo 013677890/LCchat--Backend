@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"ChatServer/apps/user/mq"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/apps/user/mq"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 	"context"
 	"errors"
 	"fmt"

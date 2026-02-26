@@ -1,10 +1,10 @@
 package router
 
 import (
-	"ChatServer/apps/gateway/internal/middleware"
-	v1 "ChatServer/apps/gateway/internal/router/v1"
-	"ChatServer/consts/redisKey"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+	v1 "github.com/013677890/LCchat-Backend/apps/gateway/internal/router/v1"
+	"github.com/013677890/LCchat-Backend/consts/redisKey"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package msg;
 
-option go_package = "ChatServer/apps/msg/pb";
+option go_package = "github.com/013677890/LCchat-Backend/apps/msg/pb";
 
 import "validate/validate.proto";
 import "proto/msg/msg_common.proto";

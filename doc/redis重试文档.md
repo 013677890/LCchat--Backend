@@ -58,7 +58,7 @@ Kafka Producer 和 Consumer 在 `apps/user/cmd/main.go` 中自动初始化，无
 ### 场景 1: 简单的 DEL 操作
 
 ```go
-import "ChatServer/apps/user/mq"
+import "github.com/013677890/LCchat-Backend/apps/user/mq"
 
 func (r *UserRepository) DeleteUserCache(ctx context.Context, userUUID string) error {
     key := fmt.Sprintf("user:info:%s", userUUID)

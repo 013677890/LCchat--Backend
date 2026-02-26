@@ -4,7 +4,7 @@
 package server
 
 import (
-	"ChatServer/pkg/grpcx"
+	"github.com/013677890/LCchat-Backend/pkg/grpcx"
 	"context"
 
 	"google.golang.org/grpc"

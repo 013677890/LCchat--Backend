@@ -1,9 +1,9 @@
 package converter
 
 import (
-	pb "ChatServer/apps/user/pb"
-	"ChatServer/model"
-	"ChatServer/pkg/util"
+	pb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/model"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 	"time"
 )
 

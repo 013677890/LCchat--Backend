@@ -1,13 +1,13 @@
 package service
 
 import (
-	"ChatServer/apps/user/internal/repository"
-	pb "ChatServer/apps/user/pb"
-	"ChatServer/consts"
-	"ChatServer/model"
-	pkgdeviceactive "ChatServer/pkg/deviceactive"
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/apps/user/internal/repository"
+	pb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/model"
+	pkgdeviceactive "github.com/013677890/LCchat-Backend/pkg/deviceactive"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 	"context"
 	"errors"
 	"sort"

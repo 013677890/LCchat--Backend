@@ -1,15 +1,15 @@
 package svc
 
 import (
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
 	"strings"
 
-	rediskey "ChatServer/consts/redisKey"
+	rediskey "github.com/013677890/LCchat-Backend/consts/redisKey"
 
 	"github.com/redis/go-redis/v9"
 )

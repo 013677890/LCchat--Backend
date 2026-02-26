@@ -64,9 +64,9 @@ cfg := config.ProductionMinIOConfig()
 package main
 
 import (
-    "ChatServer/config"
-    pkgminio "ChatServer/pkg/minio"
-    "ChatServer/pkg/logger"
+    "github.com/013677890/LCchat-Backend/config"
+    pkgminio "github.com/013677890/LCchat-Backend/pkg/minio"
+    "github.com/013677890/LCchat-Backend/pkg/logger"
     "context"
 )
 
@@ -107,8 +107,8 @@ package handler
 import (
     "context"
     "io"
-    pkgminio "ChatServer/pkg/minio"
-    "ChatServer/pkg/logger"
+    pkgminio "github.com/013677890/LCchat-Backend/pkg/minio"
+    "github.com/013677890/LCchat-Backend/pkg/logger"
 )
 
 func UploadImage(ctx context.Context, reader io.Reader, fileSize int64, fileName string) (*pkgminio.UploadResult, error) {
@@ -151,7 +151,7 @@ package handler
 
 import (
     "net/http"
-    pkgminio "ChatServer/pkg/minio"
+    pkgminio "github.com/013677890/LCchat-Backend/pkg/minio"
     "github.com/gin-gonic/gin"
 )
 

@@ -1,14 +1,14 @@
 package service
 
 import (
-	"ChatServer/apps/gateway/internal/dto"
-	"ChatServer/apps/gateway/internal/pb"
-	"ChatServer/apps/gateway/internal/utils"
-	userpb "ChatServer/apps/user/pb"
-	"ChatServer/consts"
-	"ChatServer/pkg/async"
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/util"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/pb"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/utils"
+	userpb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/pkg/async"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/util"
 	"context"
 	"errors"
 	"strconv"

@@ -1,9 +1,9 @@
 package repository
 
 import (
-	"ChatServer/apps/user/mq"
-	"ChatServer/consts/redisKey"
-	"ChatServer/model"
+	"github.com/013677890/LCchat-Backend/apps/user/mq"
+	"github.com/013677890/LCchat-Backend/consts/redisKey"
+	"github.com/013677890/LCchat-Backend/model"
 	"context"
 	"time"
 

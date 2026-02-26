@@ -72,7 +72,7 @@
 
 #### ✅ apps/user/internal/repository/errors.go
 - **修改内容**:
-  - 导入改为 `ChatServer/apps/user/mq`
+  - 导入改为 `github.com/013677890/LCchat-Backend/apps/user/mq`
   - 实现 `LogAndRetryRedisError()` 函数
 - **功能**: 
   - 记录 Redis 错误日志

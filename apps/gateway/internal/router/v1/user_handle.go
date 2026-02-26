@@ -1,14 +1,14 @@
 package v1
 
 import (
-	"ChatServer/apps/gateway/internal/dto"
-	"ChatServer/apps/gateway/internal/middleware"
-	"ChatServer/apps/gateway/internal/service"
-	"ChatServer/apps/gateway/internal/utils"
-	"ChatServer/consts"
-	"ChatServer/pkg/logger"
-	pkgminio "ChatServer/pkg/minio"
-	"ChatServer/pkg/result"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/dto"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/service"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/utils"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	pkgminio "github.com/013677890/LCchat-Backend/pkg/minio"
+	"github.com/013677890/LCchat-Backend/pkg/result"
 	"fmt"
 	"path/filepath"
 	"strings"

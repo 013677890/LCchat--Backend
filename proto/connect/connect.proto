@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package connect;
 
-option go_package = "ChatServer/apps/connect/pb";
+option go_package = "github.com/013677890/LCchat-Backend/apps/connect/pb";
 
 import "validate/validate.proto";
 

@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/result"
-	"ChatServer/consts"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/result"
+	"github.com/013677890/LCchat-Backend/consts"
 	"errors"
 	"net"
 	"net/http/httputil"

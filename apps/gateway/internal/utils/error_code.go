@@ -3,7 +3,7 @@ package utils
 import (
 	"strconv"
 
-	"ChatServer/consts"
+	"github.com/013677890/LCchat-Backend/consts"
 	"google.golang.org/grpc/status"
 )
 

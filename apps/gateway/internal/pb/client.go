@@ -1,12 +1,12 @@
 package pb
 
 import (
-	userpb "ChatServer/apps/user/pb"
+	userpb "github.com/013677890/LCchat-Backend/apps/user/pb"
 	"context"
 	"time"
 
-	"ChatServer/apps/gateway/internal/middleware"
-	"ChatServer/pkg/logger"
+	"github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 
 	"github.com/sony/gobreaker"
 	"google.golang.org/grpc"

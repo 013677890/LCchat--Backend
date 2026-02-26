@@ -276,9 +276,9 @@ if err != nil && err != redis.Nil {
 
 | Repository | 路径 |
 |------------|------|
-| `auth_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/auth_repository.go) |
-| `user_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/user_repository.go) |
-| `device_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/device_repository.go) |
-| `friend_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/friend_repository.go) |
-| `blacklist_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/blacklist_repository.go) |
-| `apply_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/ChatServer/apps/user/internal/repository/apply_repository.go) |
+| `auth_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/auth_repository.go) |
+| `user_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/user_repository.go) |
+| `device_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/device_repository.go) |
+| `friend_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/friend_repository.go) |
+| `blacklist_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/blacklist_repository.go) |
+| `apply_repository.go` | [查看](file:///c:/Users/23156/Desktop/go/github.com/013677890/LCchat-Backend/apps/user/internal/repository/apply_repository.go) |

@@ -128,8 +128,8 @@ auth.Use(middleware.JWTAuthMiddleware())
 package router
 
 import (
-    "ChatServer/apps/gateway/internal/middleware"
-    v1 "ChatServer/apps/gateway/internal/router/v1"
+    "github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+    v1 "github.com/013677890/LCchat-Backend/apps/gateway/internal/router/v1"
     "github.com/gin-gonic/gin"
 )
 
@@ -195,8 +195,8 @@ func InitRouter(authHandler *v1.AuthHandler, userHandler *v1.UserHandler) *gin.E
 package main
 
 import (
-    "ChatServer/apps/gateway/internal/middleware"
-    "ChatServer/config"
+    "github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+    "github.com/013677890/LCchat-Backend/config"
 )
 
 func main() {

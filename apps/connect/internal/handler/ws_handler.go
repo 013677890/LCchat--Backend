@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"ChatServer/apps/connect/internal/manager"
-	"ChatServer/apps/connect/internal/svc"
-	"ChatServer/consts"
-	"ChatServer/pkg/ctxmeta"
-	"ChatServer/pkg/logger"
-	"ChatServer/pkg/result"
+	"github.com/013677890/LCchat-Backend/apps/connect/internal/manager"
+	"github.com/013677890/LCchat-Backend/apps/connect/internal/svc"
+	"github.com/013677890/LCchat-Backend/consts"
+	"github.com/013677890/LCchat-Backend/pkg/ctxmeta"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
+	"github.com/013677890/LCchat-Backend/pkg/result"
 	"context"
 	"errors"
 	"net/http"

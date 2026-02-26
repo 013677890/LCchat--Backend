@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"ChatServer/model"
+	"github.com/013677890/LCchat-Backend/model"
 	"context"
 	"time"
 )

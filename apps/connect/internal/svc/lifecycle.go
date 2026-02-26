@@ -1,9 +1,9 @@
 package svc
 
 import (
-	userpb "ChatServer/apps/user/pb"
-	"ChatServer/model"
-	"ChatServer/pkg/logger"
+	userpb "github.com/013677890/LCchat-Backend/apps/user/pb"
+	"github.com/013677890/LCchat-Backend/model"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 	"context"
 	"time"
 )

@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	//"ChatServer/apps/gateway/internal/middleware"
-	"ChatServer/pkg/ctxmeta"
-	"ChatServer/pkg/logger"
+	//"github.com/013677890/LCchat-Backend/apps/gateway/internal/middleware"
+	"github.com/013677890/LCchat-Backend/pkg/ctxmeta"
+	"github.com/013677890/LCchat-Backend/pkg/logger"
 	"context"
 	"time"
 
