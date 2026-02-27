@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/013677890/LCchat-Backend/apps/connect/internal/grpc"
 	"github.com/013677890/LCchat-Backend/apps/connect/internal/handler"
 	"github.com/013677890/LCchat-Backend/apps/connect/internal/manager"
 	"github.com/013677890/LCchat-Backend/apps/connect/internal/server"
@@ -160,15 +159,6 @@ func main() {
 	srvCfg := server.DefaultConfig()
 	srv := server.New(srvCfg, wsHandler, connManager)
 
-	// 6) 构建 gRPC 服务。
-	// gRPC 监听独立端口，提供 PushToDevice/PushToUser/BroadcastToUsers/
-	// KickConnection/GetOnlineStatus/BatchGetOnlineStatus。
-	grpcAddr := os.Getenv("CONNECT_GRPC_ADDR")
-	if grpcAddr == "" {
-		grpcAddr = ":9091"
-	}
-	grpcSrv := grpc.NewServer(grpcAddr, connManager)
-
 	// 7) 后台启动 HTTP 监听。
 	// ListenAndServe 的正常退出会返回 http.ErrServerClosed，这种情况不视为启动失败。
 	go func() {
@@ -182,17 +172,6 @@ func main() {
 		}
 	}()
 
-	// 8) 后台启动 gRPC 监听。
-	go func() {
-		logger.Info(ctx, "Connect gRPC 服务启动中",
-			logger.String("addr", grpcAddr),
-		)
-		if err := grpcSrv.Start(); err != nil {
-			logger.Error(ctx, "Connect gRPC 服务启动失败",
-				logger.ErrorField("error", err),
-			)
-		}
-	}()
 
 	// 9) 阻塞等待系统退出信号（Ctrl+C / SIGTERM）。
 	quit := make(chan os.Signal, 1)
@@ -200,7 +179,6 @@ func main() {
 	<-quit
 
 	// 10) 优雅关闭流程：
-	// - 先停 gRPC（不再接受新的 RPC 调用）。
 	// - 再关闭连接管理器，主动断开所有 WebSocket 连接，避免悬挂连接。
 	// - 关闭 user-service gRPC 连接。
 	// - 最后关闭 HTTP 服务，等待进行中的请求在超时时间内结束。
@@ -208,7 +186,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	grpcSrv.Stop()
 	connManager.Shutdown()
 	connectSvc.ShutdownStatusWorkers()
 	if userGRPCConn != nil {
