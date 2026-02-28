@@ -29,9 +29,13 @@ in this project. It is intended for AI agents and new contributors.
   - `internal/manager/`: connection registry (online index)
   - `internal/grpc/`: gRPC server (PushToDevice, PushToUser, BroadcastToUsers, KickConnection)
   - **架构定位**：纯管道，不对接 Kafka，不做业务判断。上游 Push-Job 查 Redis 路由表后通过 gRPC 精确调用。
-- `apps/msg/`: message service (proto 已定义，业务代码待实现)
-  - Proto: `SendMessage`, `PullMessages`, `RecallMessage`, `GetConversations`, `MarkRead` 等
-  - Kafka: msg-service 落库后写 `MsgPushEvent` 到 `msg.push` topic，立即返回
+- `apps/msg/`: message service（DDD 分层架构）
+  - `internal/domain/message/`: 消息领域（repository接口 + service），负责 seq 分配、落库、撤回、拉取
+  - `internal/domain/conversation/`: 会话领域（repository接口 + service），负责会话列表、已读、删除、设置
+  - `internal/usecase/`: 协调层（跨领域编排），SendMessageWorkflow / RecallMessageWorkflow / MarkReadWorkflow
+  - `internal/handler/`: gRPC 薄层，跨域操作→workflow，单域操作→直调 domain service
+  - `mq/producer.go`: Kafka `msg.push` 生产者
+  - **设计原则**：domain 不互相依赖；只有 usecase 可协调多 domain + 写 Kafka
   - Push-Job: 消费 Kafka → 查 Redis 路由表 → gRPC 调用 Connect
 - `pkg/`: shared utilities (redis, logger, util, minio)
 - `consts/`: error codes and message map
