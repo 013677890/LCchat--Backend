@@ -1,19 +1,22 @@
 package usecase
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
 	msgsvc "github.com/013677890/LCchat-Backend/apps/msg/internal/domain/message"
 	"github.com/013677890/LCchat-Backend/apps/msg/mq"
+	pb "github.com/013677890/LCchat-Backend/apps/msg/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 // RecallMessageWorkflow 撤回消息用例（协调层）
 //
 // 编排步骤：
-//  1. message.Service → 查消息、校验权限（发送者 or 群管理员）、校验 2 分钟窗口
-//  2. message.Service → 更新 DB（status=1, content=撤回提示 JSON）
-//  3. mq.Producer → 写 Kafka MsgPushEvent{type="MSG_RECALL", data=RecallNotice}
-//
-// 之所以放在 usecase 而不是 message.Service：
-// - 撤回需要写 Kafka 通知（跨领域 side effect）
+//  1. message.Service.RecallMessage → 查消息 + 校验权限 + 校验时间窗口 + 更新 DB
+//  2. mq.Producer → 写 Kafka MsgPushEvent{type="MSG_RECALL", data=RecallNotice}
 type RecallMessageWorkflow struct {
 	msgService *msgsvc.Service
 	producer   *mq.Producer
@@ -30,4 +33,52 @@ func NewRecallMessageWorkflow(
 	}
 }
 
-// TODO: 实现 Execute(ctx context.Context, req *pb.RecallMessageRequest) (*pb.RecallMessageResponse, error)
+// Execute 执行撤回消息的完整流程
+func (w *RecallMessageWorkflow) Execute(ctx context.Context, req *pb.RecallMessageRequest) (*pb.RecallMessageResponse, error) {
+
+	// ============================================================
+	// Step 1: 消息领域 → 权限 + 时间窗口 + DB status=1
+	// ============================================================
+	msg, err := w.msgService.RecallMessage(ctx, req.ConvId, req.MsgId, req.OperatorUuid)
+	if err != nil {
+		return nil, fmt.Errorf("RecallMessageWorkflow: recall failed: %w", err)
+	}
+
+	// ============================================================
+	// Step 2: Kafka → MsgPushEvent{type="MSG_RECALL", data=RecallNotice}
+	// ============================================================
+	notice := &pb.RecallNotice{
+		ConvId:     req.ConvId,
+		MsgId:      req.MsgId,
+		Operator:   req.OperatorUuid,
+		RecallTime: time.Now().UnixMilli(),
+	}
+	noticeData, _ := proto.Marshal(notice)
+
+	// 确定 receiver + conv_type
+	// msg.ConvId 以 "p2p-" 开头则为单聊，否则为群聊
+	convType := pb.ConvType_CONV_TYPE_GROUP
+	receiverUuid := msg.ConvId // 群聊：receiver = 群 UUID
+	if len(msg.ConvId) > 4 && msg.ConvId[:4] == "p2p-" {
+		convType = pb.ConvType_CONV_TYPE_P2P
+		// 单聊：receiver = 会话内的另一方（非撤回操作者）
+		// 从 conv_id = "p2p-{uuid1}-{uuid2}" 中解析
+		receiverUuid = extractPeerUuid(msg.ConvId, req.OperatorUuid)
+	}
+
+	pushEvent := &pb.MsgPushEvent{
+		ReceiverUuid: receiverUuid,
+		Type:         "MSG_RECALL",
+		ConvType:     convType,
+		Data:         noticeData,
+		FromUuid:     req.OperatorUuid,
+		ServerTs:     time.Now().UnixMilli(),
+	}
+
+	if err := w.producer.Publish(ctx, req.ConvId, pushEvent); err != nil {
+		// DB 已更新，Kafka 失败不阻断。客户端下次 PullMessages 也能看到 status=1
+		log.Printf("RecallMessageWorkflow: publish kafka failed (non-fatal): %v", err)
+	}
+
+	return &pb.RecallMessageResponse{}, nil
+}

@@ -42,6 +42,7 @@ protoc `
   proto/user/blacklist_service.proto `
   proto/connect/connect.proto `
   proto/msg/msg_common.proto `
+  proto/msg/msg_push_event.proto `
   proto/msg/msg_service.proto
 ```
 
@@ -66,8 +67,9 @@ protoc `
   proto/user/device_service.proto `
   proto/user/friend_service.proto `
   proto/user/blacklist_service.proto `
-  proto/connect/connect.proto `
+  proto/connect/connect.proto ` 
   proto/msg/msg_common.proto `
+  proto/msg/msg_push_event.proto `
   proto/msg/msg_service.proto
 ```
 
@@ -97,6 +99,7 @@ protoc \
   proto/user/blacklist_service.proto \
   proto/connect/connect.proto \
   proto/msg/msg_common.proto \
+  proto/msg/msg_push_event.proto \
   proto/msg/msg_service.proto
 ```
 
@@ -118,5 +121,6 @@ protoc \
   proto/user/blacklist_service.proto \
   proto/connect/connect.proto \
   proto/msg/msg_common.proto \
+  proto/msg/msg_push_event.proto \
   proto/msg/msg_service.proto
 ```
