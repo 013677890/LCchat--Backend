@@ -138,4 +138,15 @@ CREATE TABLE IF NOT EXISTS `device_session` (
   KEY `idx_device_user_status_deleted` (`user_uuid`, `status`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备会话';
 
+CREATE TABLE IF NOT EXISTS `group_conversation` (
+  `group_uuid` CHAR(20) NOT NULL COMMENT '群组唯一id(业务主键，一对一关系无需自增ID)',
+  `max_seq` BIGINT NOT NULL DEFAULT 0 COMMENT '群消息当前最大seq',
+  `last_msg_id` CHAR(64) DEFAULT NULL COMMENT '最后一条消息的ID(ULID)',
+  `last_msg_preview` VARCHAR(255) DEFAULT NULL COMMENT '最后消息预览',
+  `last_msg_at` DATETIME(3) DEFAULT NULL COMMENT '最后消息时间(做活跃度排序)',
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '状态最后变更时间',
+  PRIMARY KEY (`group_uuid`),
+  KEY `idx_last_msg_at` (`last_msg_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群会话状态(热数据,每条群消息更新一次)';
+
 SET FOREIGN_KEY_CHECKS = 1;

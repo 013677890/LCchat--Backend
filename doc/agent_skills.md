@@ -36,6 +36,10 @@ in this project. It is intended for AI agents and new contributors.
   - `internal/handler/`: gRPC 薄层，跨域操作→workflow，单域操作→直调 domain service
   - `mq/producer.go`: Kafka `msg.push` 生产者
   - **设计原则**：domain 不互相依赖；只有 usecase 可协调多 domain + 写 Kafka
+  - **数据模型**：
+    - `model.Message` — 消息表（ULID msg_id，uidx_sender_client 幂等索引）
+    - `model.Conversation` — 个人会话视图表（每人一条，记录 read_seq / mute / pin / clear_seq）
+    - `model.GroupConversation` — 群会话状态热数据表（group_uuid 做 PK，仅 6 字段，每发一条群消息 UPDATE 一次 max_seq）
   - Push-Job: 消费 Kafka → 查 Redis 路由表 → gRPC 调用 Connect
 - `pkg/`: shared utilities (redis, logger, util, minio)
 - `consts/`: error codes and message map
