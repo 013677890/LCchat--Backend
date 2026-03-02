@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	pb "github.com/013677890/LCchat-Backend/apps/msg/pb"
@@ -132,6 +133,11 @@ func (s *Service) GetConversations(ctx context.Context, ownerUuid string, update
 
 	// ---- 转换 + 拼装群热数据 ----
 	items := make([]*pb.ConversationItem, 0, len(convs))
+	if len(convs) == 0 {
+		// 结果为空时返回 updated_since，便于客户端断点续传
+		return items, hasMore, strconv.FormatInt(updatedSince, 10), nil
+	}
+
 	var nextCursorStr string
 	for _, conv := range convs {
 		// 如果是群聊，用群热数据替换 max_seq / last_msg_*，并重新计算未读数
