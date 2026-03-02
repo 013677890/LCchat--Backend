@@ -42,7 +42,7 @@ func (w *MarkReadWorkflow) Execute(ctx context.Context, req *pb.MarkReadRequest)
 	unreadCount, err := w.convService.MarkRead(ctx, req.OwnerUuid, req.ConvId, req.ReadSeq)
 	if err != nil {
 		return nil, fmt.Errorf("MarkReadWorkflow: mark read failed: %w", err)
-}
+	}
 
 	// ============================================================
 	// Step 2: Kafka → MsgPushEvent{type="MSG_MARK_READ", data=MarkReadNotice}

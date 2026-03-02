@@ -20,7 +20,7 @@ type GroupConversation struct {
 	GroupUuid   string     `gorm:"column:group_uuid;type:char(20);primaryKey;comment:群组唯一id"`
 	MaxSeq      int64      `gorm:"column:max_seq;not null;default:0;comment:群消息当前最大seq"`
 	LastMsgId   string     `gorm:"column:last_msg_id;type:char(64);comment:最后一条消息的ID(ULID)"`
-	LastMsgPrev string     `gorm:"column:last_msg_preview;type:varchar(255);comment:最后消息预览"`
+	LastMsgPrev string     `gorm:"column:last_msg_preview;type:varchar(255);comment:最后消息预览JSON(透传给前端解析)，结构: {sender_uuid, preview}"`
 	LastMsgAt   *time.Time `gorm:"column:last_msg_at;index:idx_last_msg_at;comment:最后消息时间(做活跃度排序)"`
 	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime;comment:状态最后变更时间"`
 }

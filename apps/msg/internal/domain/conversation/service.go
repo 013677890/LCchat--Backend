@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,15 @@ import (
 	pb "github.com/013677890/LCchat-Backend/apps/msg/pb"
 	"github.com/013677890/LCchat-Backend/model"
 )
+
+const (
+	previewMaxRunes = 20
+)
+
+type lastMsgPreviewPayload struct {
+	SenderUUID string `json:"sender_uuid"`
+	Preview    string `json:"preview"`
+}
 
 // Service 会话领域服务
 //
@@ -45,7 +55,7 @@ func (s *Service) UpsertForMessage(
 	targetUuid string,
 	isSender bool,
 ) error {
-	preview := truncatePreview(msg.Content, 50)
+	preview := buildLastMsgPreview(msg)
 	sendTime := msg.SendTime
 
 	conv := &model.Conversation{
@@ -78,7 +88,7 @@ func (s *Service) UpsertForMessage(
 //
 // 每发一条群消息 UPDATE 一次 max_seq + last_msg_*
 func (s *Service) UpsertGroupConv(ctx context.Context, msg *model.Message) error {
-	preview := truncatePreview(msg.Content, 50)
+	preview := buildLastMsgPreview(msg)
 	sendTime := msg.SendTime
 
 	gc := &model.GroupConversation{
@@ -202,13 +212,49 @@ func (s *Service) UpdateSettings(ctx context.Context, ownerUuid, convId string, 
 
 // ==================== 辅助方法 ====================
 
-// truncatePreview 截取消息预览（超过 maxLen 截断 + "..."）
-func truncatePreview(content string, maxLen int) string {
-	runes := []rune(content)
+// truncatePreview 截取消息预览（超过 maxLen 截断 + "..."）。
+func truncatePreview(text string, maxLen int) string {
+	runes := []rune(text)
 	if len(runes) <= maxLen {
-		return content
+		return text
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+func buildLastMsgPreview(msg *model.Message) string {
+	payload := lastMsgPreviewPayload{
+		SenderUUID: msg.FromUuid,
+		Preview:    buildPreviewText(msg),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return `{"sender_uuid":"","preview":""}`
+	}
+	return string(data)
+}
+
+func buildPreviewText(msg *model.Message) string {
+	switch msg.MsgType {
+	case 2:
+		return "[图片]"
+	case 3:
+		return "[语音]"
+	case 4:
+		return "[视频]"
+	case 5:
+		return "[文件]"
+	case 6:
+		return "[位置]"
+	}
+
+	type textContent struct {
+		Text string `json:"text"`
+	}
+	var content textContent
+	if err := json.Unmarshal([]byte(msg.Content), &content); err == nil && content.Text != "" {
+		return truncatePreview(content.Text, previewMaxRunes)
+	}
+	return truncatePreview(msg.Content, previewMaxRunes)
 }
 
 // modelToConvItem 将 model.Conversation 转换为 pb.ConversationItem
@@ -228,11 +274,10 @@ func modelToConvItem(conv *model.Conversation) *pb.ConversationItem {
 		if conv.LastMsgAt != nil {
 			sendTimeMs = conv.LastMsgAt.UnixMilli()
 		}
-		item.LastMsg = &pb.MsgItem{
-			MsgId:    conv.LastMsgId,
-			ConvId:   conv.ConvId,
-			Content:  conv.LastMsgPrev,
-			SendTime: sendTimeMs,
+		item.LastMsg = &pb.LastMsgPreview{
+			MsgId:       conv.LastMsgId,
+			PreviewJson: conv.LastMsgPrev,
+			SendTime:    sendTimeMs,
 		}
 	}
 

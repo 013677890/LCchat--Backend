@@ -16,7 +16,7 @@ type Conversation struct {
 	TargetUuid  string         `gorm:"column:target_uuid;type:char(20);not null;uniqueIndex:uidx_owner_conv;comment:单聊为对端uuid,群聊为群uuid"`
 	LastMsgId   string         `gorm:"column:last_msg_id;type:char(64);comment:最后消息ID"`
 	LastMsgAt   *time.Time     `gorm:"column:last_msg_at;comment:最后消息时间"`
-	LastMsgPrev string         `gorm:"column:last_msg_preview;type:varchar(255);comment:最后消息预览（文本内容或占位[图片]/[语音]等）"`
+	LastMsgPrev string         `gorm:"column:last_msg_preview;type:varchar(255);comment:最后消息预览JSON(透传给前端解析)，结构: {sender_uuid, preview}"`
 	MaxSeq      int64          `gorm:"column:max_seq;not null;default:0;comment:会话内当前最大seq,用于计算未读数和clear_seq"`
 	ReadSeq     int64          `gorm:"column:read_seq;not null;default:0;comment:该用户已读到的最大seq,未读数=max(0,max_seq-read_seq)"`
 	ClearSeq    int64          `gorm:"column:clear_seq;not null;default:0;comment:会话清空位点,删除会话时记录当前max_seq,拉取历史时过滤seq<=clear_seq"`
