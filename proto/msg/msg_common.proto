@@ -20,7 +20,7 @@ enum ConvType {
 //   当消息被撤回时，content 字段会被服务端改写为系统提示 JSON，格式示例：
 //   {"text": "张三撤回了一条消息", "operator": "uuid-xxx"}
 //   客户端应按 status 判断是否渲染为撤回样式，operator 字段标识撤回操作者
-//   （可能是发送者本人，也可能是群管理员）。
+//   （当前仅支持发送者本人）。
 message MsgItem {
   // msg_id: 全局唯一消息 ID（服务端生成，ULID/雪花）。
   string msg_id = 1;

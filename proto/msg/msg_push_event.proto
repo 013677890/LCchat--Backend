@@ -46,7 +46,7 @@ message MsgPushEvent {
   // server_ts: 服务端时间戳（unix 毫秒）。
   int64 server_ts = 7;
   // from_uuid: 发送方 UUID。
-  // Connect 消费后用于多端同步：向 from_uuid 下除 device_id 以外的在线设备也投递一份，
+  // Push-Job 消费后用于多端同步：向 from_uuid 下除 device_id 以外的在线设备也投递一份，
   // 实现发送方其他终端实时看到自己发出的消息。
   string from_uuid = 8;
 }
@@ -60,7 +60,7 @@ message RecallNotice {
   string conv_id = 1;
   // msg_id: 被撤回的消息 ID。
   string msg_id = 2;
-  // operator: 撤回操作者 UUID（可能是发送者本人或群管理员）。
+  // operator: 撤回操作者 UUID（当前仅支持发送者本人）。
   string operator = 3;
   // recall_time: 撤回时间（unix 毫秒）。
   int64 recall_time = 4;
@@ -68,7 +68,7 @@ message RecallNotice {
 
 // MarkReadNotice 已读同步通知（多端同步）。
 // 由 msg-service 在 MarkRead 成功后写入 Kafka，Push-Job 消费后封装为
-// MessageEnvelope{type="MSG_MARK_READ"} 推送到该用户的其他在线设备。
+// MessageEnvelope{type="MSG_MARK_READ"} 推送到该用户在线设备。
 // 各端据此同步清除红点。
 message MarkReadNotice {
   // conv_id: 会话 ID。
