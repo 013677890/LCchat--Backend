@@ -37,9 +37,10 @@ func NewMarkReadWorkflow(
 func (w *MarkReadWorkflow) Execute(ctx context.Context, req *pb.MarkReadRequest) (*pb.MarkReadResponse, error) {
 
 	// ============================================================
-	// Step 1: 会话领域 → 更新 read_seq（单调递增）
+	// Step 1: 会话领域 → 更新 read_seq（单调递增），拿回最新未读数
 	// ============================================================
-	if err := w.convService.MarkRead(ctx, req.OwnerUuid, req.ConvId, req.ReadSeq); err != nil {
+	unreadCount, err := w.convService.MarkRead(ctx, req.OwnerUuid, req.ConvId, req.ReadSeq)
+	if err != nil {
 		return nil, fmt.Errorf("MarkReadWorkflow: mark read failed: %w", err)
 	}
 
@@ -66,5 +67,7 @@ func (w *MarkReadWorkflow) Execute(ctx context.Context, req *pb.MarkReadRequest)
 		log.Printf("MarkReadWorkflow: publish kafka failed (non-fatal): %v", err)
 	}
 
-	return &pb.MarkReadResponse{}, nil
+	return &pb.MarkReadResponse{
+		UnreadCount: unreadCount,
+	}, nil
 }

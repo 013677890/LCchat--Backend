@@ -16,9 +16,9 @@ type Repository interface {
 
 	// List 分页查询会话列表（支持全量/增量同步）
 	//   - updatedSince=0 全量，>0 增量（只返回 updated_at > updatedSince 的记录）
-	//   - cursor: 上一页最后一条的 id，首页传 0（降序分页，id < cursor）
+	//   - cursor: 复合游标 "{updated_at}_{id}"，首页传 ""
 	//   - 返回：会话列表, hasMore, error
-	List(ctx context.Context, ownerUuid string, updatedSince int64, cursor int64, pageSize int) ([]*model.Conversation, bool, error)
+	List(ctx context.Context, ownerUuid string, updatedSince int64, cursor string, pageSize int) ([]*model.Conversation, bool, error)
 
 	// Upsert 创建或更新个人会话（发消息时调用）
 	//   - 按 (owner_uuid, conv_id) 唯一键 upsert

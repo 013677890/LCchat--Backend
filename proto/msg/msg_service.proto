@@ -166,8 +166,8 @@ message GetConversationsRequest {
   int64 updated_since = 2;
   // page_size: 分页大小，默认 50，上限 200。
   int32 page_size = 3 [(validate.rules).int32 = {gte: 0, lte: 200}];
-  // cursor: 分页游标（上一页最后一条的 updated_at 值），首页传 0。
-  int64 cursor = 4;
+  // cursor: 分页游标（上一页最后一条的 updated_at_id 值），首页传 ""。
+  string cursor = 4;
 }
 
 message GetConversationsResponse {
@@ -176,7 +176,7 @@ message GetConversationsResponse {
   // has_more: 是否还有更多会话。
   bool has_more = 2;
   // next_cursor: 下一页游标。
-  int64 next_cursor = 3;
+  string next_cursor = 3;
 }
 
 // ==================== 会话操作 ====================

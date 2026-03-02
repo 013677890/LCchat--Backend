@@ -3,6 +3,8 @@ package conversation
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/013677890/LCchat-Backend/model"
@@ -40,9 +42,9 @@ func (r *repositoryImpl) GetByOwnerAndConvId(ctx context.Context, ownerUuid, con
 
 // List 分页查询会话列表
 //
-// 分页方式：游标分页（基于 id），降序排列，cursor 用 id < ?
+// 分页方式：游标分页（基于 updated_at_id），降序排列
 // hasMore 判断：N+1 Trick
-func (r *repositoryImpl) List(ctx context.Context, ownerUuid string, updatedSince int64, cursor int64, pageSize int) ([]*model.Conversation, bool, error) {
+func (r *repositoryImpl) List(ctx context.Context, ownerUuid string, updatedSince int64, cursor string, pageSize int) ([]*model.Conversation, bool, error) {
 	if pageSize <= 0 || pageSize > 200 {
 		pageSize = 50
 	}
@@ -58,9 +60,23 @@ func (r *repositoryImpl) List(ctx context.Context, ownerUuid string, updatedSinc
 		query = query.Where("status = 0")
 	}
 
-	// 【Bug3 修复】降序排列时，下一页数据的 id 更小 → id < cursor
-	if cursor > 0 {
-		query = query.Where("id < ?", cursor)
+	// 解析复合游标
+	if cursor != "" {
+		var curUpdatedAtStr, curIdStr string
+		parts := strings.SplitN(cursor, "_", 2)
+		if len(parts) == 2 {
+			curUpdatedAtStr = parts[0]
+			curIdStr = parts[1]
+
+			curUpdatedAt, err1 := strconv.ParseInt(curUpdatedAtStr, 10, 64)
+			curId, err2 := strconv.ParseInt(curIdStr, 10, 64)
+
+			if err1 == nil && err2 == nil {
+				curTime := time.UnixMilli(curUpdatedAt)
+				// 核心游标逻辑：严格小于上一页最后一条的 (updated_at, id)
+				query = query.Where("(updated_at < ?) OR (updated_at = ? AND id < ?)", curTime, curTime, curId)
+			}
+		}
 	}
 
 	var convs []*model.Conversation

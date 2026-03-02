@@ -91,6 +91,11 @@ func (s *Service) UpsertGroupConv(ctx context.Context, msg *model.Message) error
 	return s.repo.UpsertGroupConv(ctx, gc)
 }
 
+// GetByOwnerAndConvId 获取单个个人会话记录
+func (s *Service) GetByOwnerAndConvId(ctx context.Context, ownerUuid, convId string) (*model.Conversation, error) {
+	return s.repo.GetByOwnerAndConvId(ctx, ownerUuid, convId)
+}
+
 // ==================== GetConversations ====================
 
 // GetConversations 查询会话列表
@@ -102,10 +107,10 @@ func (s *Service) UpsertGroupConv(ctx context.Context, msg *model.Message) error
 //  4. 内存替换：把个人会话中群聊记录的 max_seq / last_msg 替换成群热数据的真实值
 //  5. 重新计算群聊未读数：real_max_seq - read_seq
 //  6. 转 proto 返回
-func (s *Service) GetConversations(ctx context.Context, ownerUuid string, updatedSince int64, cursor int64, pageSize int) ([]*pb.ConversationItem, bool, int64, error) {
+func (s *Service) GetConversations(ctx context.Context, ownerUuid string, updatedSince int64, cursor string, pageSize int) ([]*pb.ConversationItem, bool, string, error) {
 	convs, hasMore, err := s.repo.List(ctx, ownerUuid, updatedSince, cursor, pageSize)
 	if err != nil {
-		return nil, false, 0, fmt.Errorf("GetConversations: query failed: %w", err)
+		return nil, false, "", fmt.Errorf("GetConversations: query failed: %w", err)
 	}
 
 	// ---- 收集群聊 ID，批量查群热数据 ----
@@ -127,7 +132,7 @@ func (s *Service) GetConversations(ctx context.Context, ownerUuid string, update
 
 	// ---- 转换 + 拼装群热数据 ----
 	items := make([]*pb.ConversationItem, 0, len(convs))
-	var nextCursor int64
+	var nextCursorStr string
 	for _, conv := range convs {
 		// 如果是群聊，用群热数据替换 max_seq / last_msg_*，并重新计算未读数
 		if conv.Type == 2 && groupMap != nil {
@@ -146,10 +151,11 @@ func (s *Service) GetConversations(ctx context.Context, ownerUuid string, update
 		}
 
 		items = append(items, modelToConvItem(conv))
-		nextCursor = conv.Id // 最后一条的 id 作为下一页 cursor
+		// 最后一条的 updated_at 和 id 组合成联合游标，防止毫秒级时间冲突导致丢数据
+		nextCursorStr = fmt.Sprintf("%d_%d", conv.UpdatedAt.UnixMilli(), conv.Id)
 	}
 
-	return items, hasMore, nextCursor, nil
+	return items, hasMore, nextCursorStr, nil
 }
 
 // ==================== MarkRead ====================
@@ -157,8 +163,18 @@ func (s *Service) GetConversations(ctx context.Context, ownerUuid string, update
 // MarkRead 标记会话已读
 //
 // DB 层面 read_seq = GREATEST(read_seq, readSeq)，同步计算 unread_count
-func (s *Service) MarkRead(ctx context.Context, ownerUuid, convId string, readSeq int64) error {
-	return s.repo.UpdateReadSeq(ctx, ownerUuid, convId, readSeq)
+// 返回最新计算得到的 unread_count
+func (s *Service) MarkRead(ctx context.Context, ownerUuid, convId string, readSeq int64) (int32, error) {
+	err := s.repo.UpdateReadSeq(ctx, ownerUuid, convId, readSeq)
+	if err != nil {
+		return 0, err
+	}
+	// 查询最新的会话状态获取 unread_count
+	conv, err := s.repo.GetByOwnerAndConvId(ctx, ownerUuid, convId)
+	if err != nil {
+		return 0, err
+	}
+	return int32(conv.UnreadCount), nil
 }
 
 // ==================== DeleteConversation ====================

@@ -107,7 +107,7 @@ Connect Service 负责：
 
 ### 5.3 顺序保证
 
-- Kafka 分区键建议按  `receiver_user_uuid`。
+- Kafka 分区键建议按 `conv_id`，以保证单会话的消息绝对有序下发。
 - 需要明确“单会话有序”还是“单用户有序”。
 
 ### 5.4 离线策略
